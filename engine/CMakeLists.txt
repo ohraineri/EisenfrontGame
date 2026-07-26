@@ -273,3 +273,25 @@ target_link_libraries(eisenfront_asset_manager PUBLIC
     Eisenfront::Texture Eisenfront::Shader Eisenfront::Mesh Eisenfront::Platform
 )
 target_link_libraries(eisenfront_asset_manager PRIVATE Eisenfront::Cgltf)
+
+# --- Camera -------------------------------------------------------------
+add_library(eisenfront_camera STATIC
+    src/camera/camera.c
+)
+add_library(Eisenfront::Camera ALIAS eisenfront_camera)
+
+target_include_directories(eisenfront_camera
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_camera PUBLIC c_std_23)
+
+target_compile_options(eisenfront_camera PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_camera PUBLIC Eisenfront::Core Eisenfront::Cglm)
+if(NOT WIN32)
+    target_link_libraries(eisenfront_camera PUBLIC m)
+endif()
