@@ -160,7 +160,13 @@ static void test_reload_keeps_last_good_program_on_failure_then_recovers(void) {
     ShaderProgram *program = nullptr;
     TEST_ASSERT_EQUAL(RESULT_OK, shader_program_load(&desc, &program));
     const uint32_t original_handle = shader_program_get_gl_handle(program);
-    TEST_ASSERT_EQUAL(0, shader_program_uniform_count(program));
+    /* triangle.vert's own uModel/uTint uniforms are active regardless of
+     * which fragment source is linked in; what this test actually cares
+     * about is uExtra, which only the "v2" fragment source below
+     * declares - so that is what gets asserted, rather than a total
+     * count that would also depend on the GLSL compiler's dead-code
+     * elimination of the unread vTint varying. */
+    TEST_ASSERT_EQUAL(-1, shader_program_get_uniform_location(program, "uExtra"));
 
     /* Break it: reload must fail and leave the working program alone. */
     TEST_ASSERT_EQUAL(RESULT_OK, file_write_all(reload_path, k_broken_fragment_source,
@@ -175,7 +181,6 @@ static void test_reload_keeps_last_good_program_on_failure_then_recovers(void) {
     TEST_ASSERT_EQUAL(RESULT_OK, file_write_all(reload_path, k_valid_fragment_source_v2,
                                                  strlen(k_valid_fragment_source_v2)));
     TEST_ASSERT_EQUAL(RESULT_OK, shader_program_reload(program));
-    TEST_ASSERT_EQUAL(1, shader_program_uniform_count(program));
     TEST_ASSERT_TRUE(shader_program_get_uniform_location(program, "uExtra") >= 0);
 
     shader_program_release(program);
