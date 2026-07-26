@@ -128,3 +128,26 @@ target_compile_options(eisenfront_input PRIVATE
 
 target_link_libraries(eisenfront_input PUBLIC Eisenfront::Window)
 target_link_libraries(eisenfront_input PRIVATE SDL3::SDL3)
+
+# --- Graphics Context -----------------------------------------------------
+# SDL3 stays private (context creation/swap only); GLAD is PUBLIC because
+# eisenfront/graphics_context.h intentionally exposes OpenGL to the
+# rendering modules built on top of it (see that header's file comment).
+add_library(eisenfront_graphics STATIC
+    src/graphics/graphics_context.c
+)
+add_library(Eisenfront::Graphics ALIAS eisenfront_graphics)
+
+target_include_directories(eisenfront_graphics
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_graphics PUBLIC c_std_23)
+
+target_compile_options(eisenfront_graphics PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_graphics PUBLIC Eisenfront::Window Eisenfront::Glad)
+target_link_libraries(eisenfront_graphics PRIVATE SDL3::SDL3)
