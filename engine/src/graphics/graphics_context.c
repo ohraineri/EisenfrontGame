@@ -312,3 +312,8 @@ void graphics_context_get_version(const GraphicsContext *context, int32_t *out_m
         *out_minor = context->version_minor;
     }
 }
+
+void *graphics_context_get_native_handle(const GraphicsContext *context) {
+    ASSERT(context != nullptr);
+    return context != nullptr ? context->gl_context : nullptr;
+}
