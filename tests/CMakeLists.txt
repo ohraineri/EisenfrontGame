@@ -49,3 +49,8 @@ target_compile_definitions(texture_tests PRIVATE
 )
 add_test(NAME texture_tests COMMAND texture_tests)
 set_tests_properties(texture_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(mesh_tests mesh_tests/test_mesh.c)
+target_link_libraries(mesh_tests PRIVATE Eisenfront::Mesh unity)
+add_test(NAME mesh_tests COMMAND mesh_tests)
+set_tests_properties(mesh_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
