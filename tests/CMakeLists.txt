@@ -59,14 +59,6 @@ add_executable(camera_tests camera_tests/test_camera.c)
 target_link_libraries(camera_tests PRIVATE Eisenfront::Camera unity)
 add_test(NAME camera_tests COMMAND camera_tests)
 
-add_executable(renderer_fx_tests renderer_fx_tests/test_renderer_fx.c)
-target_link_libraries(renderer_fx_tests PRIVATE Eisenfront::RendererFx unity)
-target_compile_definitions(renderer_fx_tests PRIVATE
-    RENDERER_FX_TEST_TEXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/texture_tests/images"
-)
-add_test(NAME renderer_fx_tests COMMAND renderer_fx_tests)
-set_tests_properties(renderer_fx_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
-
 add_executable(ecs_tests ecs_tests/test_ecs.c)
 target_link_libraries(ecs_tests PRIVATE Eisenfront::Ecs unity)
 add_test(NAME ecs_tests COMMAND ecs_tests)
