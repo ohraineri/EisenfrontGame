@@ -1,3 +1,9 @@
+/* _GNU_SOURCE exposes POSIX.1-2008 + glibc extensions (clock_gettime,
+ * nanosleep, realpath, readlink, pthread_setname_np, syscall/SYS_gettid, ...)
+ * that -std=c23 hides by default since CMAKE_C_EXTENSIONS is OFF. Harmless
+ * on macOS/BSD libc, which do not gate declarations on it. */
+#define _GNU_SOURCE
+
 #include "eisenfront/platform.h"
 
 #include <pthread.h>
