@@ -573,6 +573,10 @@ Result texture_create_from_pixels(uint32_t width, uint32_t height, TextureFormat
     texture->width = width;
     texture->height = height;
     texture->ref_count = 1;
+    /* Empty source_path: texture_reload() requires one and returns
+     * RESULT_ERROR_INVALID_STATE for a procedurally-created texture. */
+    texture->source_path[0] = '\0';
+    texture->params = effective;
 
     /* Not cached: there is no source path to key it on. */
     *out_texture = texture;
