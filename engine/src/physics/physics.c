@@ -470,17 +470,17 @@ static bool layers_collide(const Body *a, const Body *b) {
     return (a->layer & b->layer_mask) != 0 && (b->layer & a->layer_mask) != 0;
 }
 
-static void resolve_collision(Body *a, Body *b, const CollisionResult *hit) {
+static void resolve_collision(Body *a, Body *b, CollisionResult hit) {
     const float total_inv_mass = a->inv_mass + b->inv_mass;
     if (total_inv_mass <= 0.0f) {
         return;
     }
 
     const float correction_mag =
-        fmaxf(hit->penetration - PHYSICS_POSITIONAL_CORRECTION_SLOP, 0.0f) / total_inv_mass *
+        fmaxf(hit.penetration - PHYSICS_POSITIONAL_CORRECTION_SLOP, 0.0f) / total_inv_mass *
         PHYSICS_POSITIONAL_CORRECTION_PERCENT;
     vec3 correction;
-    glm_vec3_scale(hit->normal, correction_mag, correction);
+    glm_vec3_scale(hit.normal, correction_mag, correction);
     vec3 scaled;
     glm_vec3_scale(correction, -a->inv_mass, scaled);
     glm_vec3_add(a->position, scaled, a->position);
@@ -489,7 +489,7 @@ static void resolve_collision(Body *a, Body *b, const CollisionResult *hit) {
 
     vec3 relative_velocity;
     glm_vec3_sub(b->linear_velocity, a->linear_velocity, relative_velocity);
-    const float velocity_along_normal = glm_vec3_dot(relative_velocity, hit->normal);
+    const float velocity_along_normal = glm_vec3_dot(relative_velocity, hit.normal);
     if (velocity_along_normal > 0.0f) {
         return; /* already separating */
     }
@@ -497,7 +497,7 @@ static void resolve_collision(Body *a, Body *b, const CollisionResult *hit) {
     const float restitution = fminf(a->restitution, b->restitution);
     const float impulse_mag = -(1.0f + restitution) * velocity_along_normal / total_inv_mass;
     vec3        impulse;
-    glm_vec3_scale(hit->normal, impulse_mag, impulse);
+    glm_vec3_scale(hit.normal, impulse_mag, impulse);
     glm_vec3_scale(impulse, -a->inv_mass, scaled);
     glm_vec3_add(a->linear_velocity, scaled, a->linear_velocity);
     glm_vec3_scale(impulse, b->inv_mass, scaled);
@@ -507,7 +507,7 @@ static void resolve_collision(Body *a, Body *b, const CollisionResult *hit) {
      * relative velocity, clamped to the normal impulse magnitude scaled
      * by the combined friction coefficient. */
     vec3 normal_component;
-    glm_vec3_scale(hit->normal, velocity_along_normal, normal_component);
+    glm_vec3_scale(hit.normal, velocity_along_normal, normal_component);
     vec3 tangent_velocity;
     glm_vec3_sub(relative_velocity, normal_component, tangent_velocity);
     const float tangent_speed = glm_vec3_norm(tangent_velocity);
@@ -601,7 +601,7 @@ void physics_world_step(PhysicsWorld *world, float delta_time) {
                     world->curr_overlap_count += 1;
                 }
             } else {
-                resolve_collision(a, b, &hit);
+                resolve_collision(a, b, hit);
             }
         }
     }
@@ -704,6 +704,8 @@ bool physics_raycast(const PhysicsWorld *world, vec3 origin, vec3 direction, flo
         if (!body->active || (body->layer & layer_mask) == 0) {
             continue;
         }
+        vec3 body_pos;
+        copy3(body->position, body_pos);
 
         float t = 0.0f;
         bool  hit = false;
@@ -712,26 +714,28 @@ bool physics_raycast(const PhysicsWorld *world, vec3 origin, vec3 direction, flo
             const float radius = (body->shape.type == SHAPE_TYPE_SPHERE)
                                       ? body->shape.radius
                                       : body->shape.radius + body->shape.half_height;
-            hit = ray_sphere(origin, direction, body->position, radius, best_t, &t);
+            hit = ray_sphere(origin, direction, body_pos, radius, best_t, &t);
             if (hit) {
                 vec3 point;
                 glm_vec3_scale(direction, t, point);
                 glm_vec3_add(origin, point, point);
-                glm_vec3_sub(point, body->position, normal);
+                glm_vec3_sub(point, body_pos, normal);
                 glm_vec3_normalize(normal);
             }
         } else {
-            hit = ray_aabb(origin, direction, body->position, body->shape.half_extents, best_t, &t);
+            vec3 half_extents;
+            copy3(body->shape.half_extents, half_extents);
+            hit = ray_aabb(origin, direction, body_pos, half_extents, best_t, &t);
             if (hit) {
                 vec3 point;
                 glm_vec3_scale(direction, t, point);
                 glm_vec3_add(origin, point, point);
                 vec3 local;
-                glm_vec3_sub(point, body->position, local);
+                glm_vec3_sub(point, body_pos, local);
                 int   max_axis = 0;
-                float max_component = fabsf(local[0]) / body->shape.half_extents[0];
+                float max_component = fabsf(local[0]) / half_extents[0];
                 for (int axis = 1; axis < 3; ++axis) {
-                    const float component = fabsf(local[axis]) / body->shape.half_extents[axis];
+                    const float component = fabsf(local[axis]) / half_extents[axis];
                     if (component > max_component) {
                         max_axis = axis;
                         max_component = component;
@@ -818,11 +822,14 @@ static CollisionResult capsule_vs_body(vec3 capsule_pos, float radius, float hal
                                         const Body *body) {
     vec3 seg_a = {capsule_pos[0], capsule_pos[1] - half_height, capsule_pos[2]};
     vec3 seg_b = {capsule_pos[0], capsule_pos[1] + half_height, capsule_pos[2]};
+    vec3 body_pos;
+    copy3(body->position, body_pos);
 
     if (body->shape.type == SHAPE_TYPE_BOX) {
+        vec3 half_extents;
+        copy3(body->shape.half_extents, half_extents);
         vec3 segment_point, box_point;
-        closest_segment_to_aabb(seg_a, seg_b, body->position, body->shape.half_extents,
-                                 segment_point, box_point);
+        closest_segment_to_aabb(seg_a, seg_b, body_pos, half_extents, segment_point, box_point);
         return test_sphere_sphere(segment_point, radius, box_point, 0.0f);
     }
 
@@ -833,8 +840,8 @@ static CollisionResult capsule_vs_body(vec3 capsule_pos, float radius, float hal
         (body->shape.type == SHAPE_TYPE_CAPSULE) ? body->shape.radius + body->shape.half_height
                                                     : body->shape.radius;
     vec3 closest;
-    closest_point_on_segment(body->position, seg_a, seg_b, closest);
-    return test_sphere_sphere(closest, radius, body->position, other_radius);
+    closest_point_on_segment(body_pos, seg_a, seg_b, closest);
+    return test_sphere_sphere(closest, radius, body_pos, other_radius);
 }
 
 void character_controller_move(CharacterController *controller, vec3 desired_displacement,
@@ -864,7 +871,7 @@ void character_controller_move(CharacterController *controller, vec3 desired_dis
                 continue;
             }
 
-            const CollisionResult hit =
+            CollisionResult hit =
                 capsule_vs_body(tentative, controller->radius, controller->half_height, body);
             if (!hit.overlapping) {
                 continue;
