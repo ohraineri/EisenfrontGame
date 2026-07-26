@@ -358,3 +358,30 @@ target_compile_options(eisenfront_ecs PRIVATE
 
 target_link_libraries(eisenfront_ecs PUBLIC Eisenfront::Core)
 
+# --- Renderer FX (Renderer expansion: skybox, lighting, shadows, HDR/bloom/postprocess) ---
+add_library(eisenfront_renderer_fx STATIC
+    src/renderer_fx/framebuffer.c
+    src/renderer_fx/lighting.c
+    src/renderer_fx/skybox.c
+    src/renderer_fx/shadow.c
+    src/renderer_fx/postprocess.c
+)
+add_library(Eisenfront::RendererFx ALIAS eisenfront_renderer_fx)
+
+target_include_directories(eisenfront_renderer_fx
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_renderer_fx PUBLIC c_std_23)
+
+target_compile_options(eisenfront_renderer_fx PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_renderer_fx PUBLIC
+    Eisenfront::Buffers Eisenfront::Texture Eisenfront::Graphics Eisenfront::Cglm
+)
+if(NOT WIN32)
+    target_link_libraries(eisenfront_renderer_fx PUBLIC m)
+endif()
