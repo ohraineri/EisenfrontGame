@@ -11,6 +11,20 @@ endif()
 
 option(EISENFRONT_BUILD_TESTS "Build Eisenfront unit tests" ON)
 
+# The Editor module (Dear ImGui debug UI) must never ship in a Release
+# build - not merely disabled at runtime, but not even compiled in, so
+# it cannot end up in a shipped binary by a runtime flag being flipped
+# wrong. Defaults on for every other configuration; forced off (with a
+# loud warning if the user tried to force it on) for Release.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(EISENFRONT_BUILD_EDITOR)
+        message(WARNING "Eisenfront: EISENFRONT_BUILD_EDITOR requested but build type is Release - the Editor module must never ship, forcing it off")
+    endif()
+    set(EISENFRONT_BUILD_EDITOR OFF CACHE BOOL "Build Eisenfront's Editor module (must never be on for a Release build)" FORCE)
+else()
+    option(EISENFRONT_BUILD_EDITOR "Build Eisenfront's Editor module (must never be on for a Release build)" ON)
+endif()
+
 include(FetchContent)
 
 # --- SDL3 -------------------------------------------------------------
@@ -39,6 +53,9 @@ add_subdirectory(third_party/cgltf)
 add_subdirectory(third_party/cglm)
 add_subdirectory(third_party/miniaudio)
 add_subdirectory(third_party/enet)
+if(EISENFRONT_BUILD_EDITOR)
+    add_subdirectory(third_party/cimgui)
+endif()
 add_subdirectory(engine)
 
 if(EISENFRONT_BUILD_TESTS)
