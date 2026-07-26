@@ -37,6 +37,7 @@ add_subdirectory(third_party/glad)
 add_subdirectory(third_party/stb)
 add_subdirectory(third_party/cgltf)
 add_subdirectory(third_party/cglm)
+add_subdirectory(third_party/miniaudio)
 add_subdirectory(engine)
 
 if(EISENFRONT_BUILD_TESTS)

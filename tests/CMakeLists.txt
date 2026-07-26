@@ -10,6 +10,13 @@ add_executable(physics_tests physics_tests/test_physics.c)
 target_link_libraries(physics_tests PRIVATE Eisenfront::Physics unity)
 add_test(NAME physics_tests COMMAND physics_tests)
 
+add_executable(audio_tests audio_tests/test_audio.c)
+target_link_libraries(audio_tests PRIVATE Eisenfront::Audio unity)
+target_compile_definitions(audio_tests PRIVATE
+    AUDIO_TEST_SOUND_DIR="${CMAKE_CURRENT_SOURCE_DIR}/audio_tests/sounds"
+)
+add_test(NAME audio_tests COMMAND audio_tests)
+
 add_executable(window_tests window_tests/test_window.c)
 target_link_libraries(window_tests PRIVATE Eisenfront::Window unity)
 add_test(NAME window_tests COMMAND window_tests)
