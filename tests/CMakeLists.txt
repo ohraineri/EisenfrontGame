@@ -36,3 +36,8 @@ target_compile_definitions(shader_tests PRIVATE
 )
 add_test(NAME shader_tests COMMAND shader_tests)
 set_tests_properties(shader_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(buffers_tests buffers_tests/test_buffers.c)
+target_link_libraries(buffers_tests PRIVATE Eisenfront::Buffers unity)
+add_test(NAME buffers_tests COMMAND buffers_tests)
+set_tests_properties(buffers_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
