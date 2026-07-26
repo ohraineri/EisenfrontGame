@@ -5,6 +5,19 @@
 #include <string.h>
 
 #define PHYSICS_MAX_OVERLAP_PAIRS 256u
+
+/* cglm's vec3/versor parameters are plain (non-const) float arrays even
+ * when a function only reads them - a known cglm API characteristic,
+ * not something this module can change. Wherever a value is only
+ * reachable through a `const` pointer (a body read through a `const
+ * PhysicsWorld *`, a shape read through a `const Shape *`, ...), it has
+ * to be copied into a local mutable buffer before any cglm call can
+ * touch it; this helper is that copy. */
+static void copy3(const float src[3], vec3 dest) {
+    dest[0] = src[0];
+    dest[1] = src[1];
+    dest[2] = src[2];
+}
 #define PHYSICS_POSITIONAL_CORRECTION_PERCENT 0.8f
 #define PHYSICS_POSITIONAL_CORRECTION_SLOP 0.01f
 
@@ -145,29 +158,31 @@ static CollisionResult test_collision(const Shape *shape_a, vec3 pos_a, const Sh
     if (shape_a->type == SHAPE_TYPE_SPHERE && shape_b->type == SHAPE_TYPE_SPHERE) {
         return test_sphere_sphere(pos_a, shape_a->radius, pos_b, shape_b->radius);
     }
+    vec3 half_a, half_b;
+    copy3(shape_a->half_extents, half_a);
+    copy3(shape_b->half_extents, half_b);
+
     if (shape_a->type == SHAPE_TYPE_SPHERE && shape_b->type == SHAPE_TYPE_BOX) {
-        return test_sphere_aabb(pos_a, shape_a->radius, pos_b, shape_b->half_extents);
+        return test_sphere_aabb(pos_a, shape_a->radius, pos_b, half_b);
     }
     if (shape_a->type == SHAPE_TYPE_BOX && shape_b->type == SHAPE_TYPE_SPHERE) {
-        CollisionResult result = test_sphere_aabb(pos_b, shape_b->radius, pos_a, shape_a->half_extents);
+        CollisionResult result = test_sphere_aabb(pos_b, shape_b->radius, pos_a, half_a);
         if (result.overlapping) {
             glm_vec3_negate(result.normal); /* flip: that call computed B(sphere)->A(box) */
         }
         return result;
     }
     if (shape_a->type == SHAPE_TYPE_BOX && shape_b->type == SHAPE_TYPE_BOX) {
-        return test_aabb_aabb(pos_a, shape_a->half_extents, pos_b, shape_b->half_extents);
+        return test_aabb_aabb(pos_a, half_a, pos_b, half_b);
     }
     /* Any pair involving a capsule falls back to the bounding-sphere
      * approximation for whichever side is a capsule. */
-    const float radius_a =
-        (shape_a->type == SHAPE_TYPE_CAPSULE) ? shape_a->radius + shape_a->half_height
-        : (shape_a->type == SHAPE_TYPE_SPHERE)  ? shape_a->radius
-                                                  : glm_vec3_norm(shape_a->half_extents);
-    const float radius_b =
-        (shape_b->type == SHAPE_TYPE_CAPSULE) ? shape_b->radius + shape_b->half_height
-        : (shape_b->type == SHAPE_TYPE_SPHERE)  ? shape_b->radius
-                                                  : glm_vec3_norm(shape_b->half_extents);
+    const float radius_a = (shape_a->type == SHAPE_TYPE_CAPSULE) ? shape_a->radius + shape_a->half_height
+                            : (shape_a->type == SHAPE_TYPE_SPHERE) ? shape_a->radius
+                                                                     : glm_vec3_norm(half_a);
+    const float radius_b = (shape_b->type == SHAPE_TYPE_CAPSULE) ? shape_b->radius + shape_b->half_height
+                            : (shape_b->type == SHAPE_TYPE_SPHERE) ? shape_b->radius
+                                                                     : glm_vec3_norm(half_b);
     return test_sphere_sphere(pos_a, radius_a, pos_b, radius_b);
 }
 
