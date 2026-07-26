@@ -170,3 +170,22 @@ target_compile_options(eisenfront_renderer PRIVATE
 )
 
 target_link_libraries(eisenfront_renderer PUBLIC Eisenfront::Graphics)
+
+# --- Shader -------------------------------------------------------------
+add_library(eisenfront_shader STATIC
+    src/shader/shader.c
+)
+add_library(Eisenfront::Shader ALIAS eisenfront_shader)
+
+target_include_directories(eisenfront_shader
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_shader PUBLIC c_std_23)
+
+target_compile_options(eisenfront_shader PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_shader PUBLIC Eisenfront::Graphics Eisenfront::Platform)
