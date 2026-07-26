@@ -1,7 +1,8 @@
 /*
- * Runs against SDL3's "dummy" video driver (see CMakeLists.txt, which sets
- * SDL_VIDEODRIVER=dummy for this target) so it passes in headless CI with
- * no real display, while still exercising the real SDL3 window code path.
+ * Runs against SDL3's "offscreen" video driver (see CMakeLists.txt, which
+ * sets SDL_VIDEODRIVER=offscreen for this target) so it passes in headless
+ * CI with no real display, while still exercising the real SDL3 window
+ * code path including SDL_WINDOW_OPENGL, which "dummy" does not support.
  */
 #include "eisenfront/window.h"
 
