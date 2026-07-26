@@ -41,3 +41,11 @@ add_executable(buffers_tests buffers_tests/test_buffers.c)
 target_link_libraries(buffers_tests PRIVATE Eisenfront::Buffers unity)
 add_test(NAME buffers_tests COMMAND buffers_tests)
 set_tests_properties(buffers_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(texture_tests texture_tests/test_texture.c)
+target_link_libraries(texture_tests PRIVATE Eisenfront::Texture unity)
+target_compile_definitions(texture_tests PRIVATE
+    TEXTURE_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/texture_tests/images"
+)
+add_test(NAME texture_tests COMMAND texture_tests)
+set_tests_properties(texture_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
