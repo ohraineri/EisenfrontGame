@@ -11,10 +11,31 @@ endif()
 
 option(EISENFRONT_BUILD_TESTS "Build Eisenfront unit tests" ON)
 
+include(FetchContent)
+
+# --- SDL3 -------------------------------------------------------------
+# Only Window, Input and Graphics Context link SDL3 (see the third-party
+# table in CLAUDE.md); Platform and Core never do. Prefer a system SDL3
+# install; fall back to fetching and building it from source.
+set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC ON CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+
+find_package(SDL3 QUIET CONFIG)
+if(NOT SDL3_FOUND)
+    message(STATUS "Eisenfront: system SDL3 not found, fetching release-3.2.30")
+    FetchContent_Declare(
+        SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.2.30
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(SDL3)
+endif()
+
 add_subdirectory(engine)
 
 if(EISENFRONT_BUILD_TESTS)
-    include(FetchContent)
     FetchContent_Declare(
         unity
         GIT_REPOSITORY https://github.com/ThrowTheSwitch/Unity.git
