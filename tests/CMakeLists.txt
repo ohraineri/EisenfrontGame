@@ -6,6 +6,10 @@ add_executable(core_tests core_tests/test_core.c)
 target_link_libraries(core_tests PRIVATE Eisenfront::Core unity)
 add_test(NAME core_tests COMMAND core_tests)
 
+add_executable(physics_tests physics_tests/test_physics.c)
+target_link_libraries(physics_tests PRIVATE Eisenfront::Physics unity)
+add_test(NAME physics_tests COMMAND physics_tests)
+
 add_executable(window_tests window_tests/test_window.c)
 target_link_libraries(window_tests PRIVATE Eisenfront::Window unity)
 add_test(NAME window_tests COMMAND window_tests)
