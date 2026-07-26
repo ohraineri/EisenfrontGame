@@ -282,7 +282,9 @@ Result physics_world_create(const PhysicsWorldDesc *desc, PhysicsWorld **out_wor
     }
     world->free_count = effective.max_bodies;
     world->max_bodies = effective.max_bodies;
-    glm_vec3_copy(effective.gravity, world->gravity);
+    world->gravity[0] = effective.gravity[0];
+    world->gravity[1] = effective.gravity[1];
+    world->gravity[2] = effective.gravity[2];
     world->prev_overlap_count = 0;
     world->curr_overlap_count = 0;
 
