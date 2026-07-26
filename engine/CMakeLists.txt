@@ -447,3 +447,30 @@ target_compile_options(eisenfront_networking PRIVATE
 
 target_link_libraries(eisenfront_networking PUBLIC Eisenfront::Core)
 target_link_libraries(eisenfront_networking PRIVATE Eisenfront::Enet)
+
+# --- Editor ------------------------------------------------------------
+# Only built when EISENFRONT_BUILD_EDITOR is on - never for a Release
+# build (see the top-level CMakeLists.txt and editor.h's file header
+# comment). The target, and everything that depends on
+# Eisenfront::Editor, simply does not exist otherwise.
+if(EISENFRONT_BUILD_EDITOR)
+    add_library(eisenfront_editor STATIC
+        src/editor/editor.c
+    )
+    add_library(Eisenfront::Editor ALIAS eisenfront_editor)
+
+    target_include_directories(eisenfront_editor
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    target_compile_features(eisenfront_editor PUBLIC c_std_23)
+
+    target_compile_options(eisenfront_editor PRIVATE
+        $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+        $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+    )
+
+    target_link_libraries(eisenfront_editor PUBLIC Eisenfront::Core Eisenfront::Window
+                                                    Eisenfront::Graphics Eisenfront::Cimgui)
+    target_link_libraries(eisenfront_editor PRIVATE SDL3::SDL3)
+endif()
