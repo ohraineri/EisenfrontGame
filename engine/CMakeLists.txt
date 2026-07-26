@@ -208,3 +208,25 @@ target_compile_options(eisenfront_buffers PRIVATE
 )
 
 target_link_libraries(eisenfront_buffers PUBLIC Eisenfront::Graphics)
+
+# --- Texture -------------------------------------------------------------
+# stb_image is a private implementation detail of texture.c;
+# eisenfront/texture.h never includes it.
+add_library(eisenfront_texture STATIC
+    src/texture/texture.c
+)
+add_library(Eisenfront::Texture ALIAS eisenfront_texture)
+
+target_include_directories(eisenfront_texture
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_texture PUBLIC c_std_23)
+
+target_compile_options(eisenfront_texture PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_texture PUBLIC Eisenfront::Graphics Eisenfront::Platform)
+target_link_libraries(eisenfront_texture PRIVATE Eisenfront::StbImage)
