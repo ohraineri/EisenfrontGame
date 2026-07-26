@@ -230,3 +230,22 @@ target_compile_options(eisenfront_texture PRIVATE
 
 target_link_libraries(eisenfront_texture PUBLIC Eisenfront::Graphics Eisenfront::Platform)
 target_link_libraries(eisenfront_texture PRIVATE Eisenfront::StbImage)
+
+# --- Mesh -------------------------------------------------------------
+add_library(eisenfront_mesh STATIC
+    src/mesh/mesh.c
+)
+add_library(Eisenfront::Mesh ALIAS eisenfront_mesh)
+
+target_include_directories(eisenfront_mesh
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_mesh PUBLIC c_std_23)
+
+target_compile_options(eisenfront_mesh PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_mesh PUBLIC Eisenfront::Buffers)
