@@ -315,7 +315,9 @@ Result rigid_body_create(PhysicsWorld *world, const RigidBodyDesc *desc, BodyId 
     body->active = true;
     body->type = desc->type;
     body->shape = desc->shape;
-    glm_vec3_copy(desc->position, body->position);
+    body->position[0] = desc->position[0];
+    body->position[1] = desc->position[1];
+    body->position[2] = desc->position[2];
     body->rotation[0] = desc->rotation[0];
     body->rotation[1] = desc->rotation[1];
     body->rotation[2] = desc->rotation[2];
@@ -385,7 +387,7 @@ Result rigid_body_set_transform(PhysicsWorld *world, BodyId body, vec3 position,
     }
     Body *b = &world->bodies[body_index_of(body)];
     glm_vec3_copy(position, b->position);
-    glm_quat_copy((float *)rotation, b->rotation);
+    glm_quat_copy(rotation, b->rotation);
     return RESULT_OK;
 }
 
