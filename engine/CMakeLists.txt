@@ -106,3 +106,25 @@ target_compile_options(eisenfront_window PRIVATE
 
 target_link_libraries(eisenfront_window PUBLIC Eisenfront::Core)
 target_link_libraries(eisenfront_window PRIVATE SDL3::SDL3)
+
+# --- Input -------------------------------------------------------------
+# SDL3 is a private implementation detail of input.c; eisenfront/input.h
+# never includes an SDL header.
+add_library(eisenfront_input STATIC
+    src/input/input.c
+)
+add_library(Eisenfront::Input ALIAS eisenfront_input)
+
+target_include_directories(eisenfront_input
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_input PUBLIC c_std_23)
+
+target_compile_options(eisenfront_input PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_input PUBLIC Eisenfront::Window)
+target_link_libraries(eisenfront_input PRIVATE SDL3::SDL3)
