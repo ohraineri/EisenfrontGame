@@ -13,3 +13,8 @@ add_test(NAME window_tests COMMAND window_tests)
 # (exactly what headless CI and this sandbox have) and, unlike "dummy",
 # still honors SDL_WINDOW_OPENGL, which Window always requests.
 set_tests_properties(window_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(input_tests input_tests/test_input.c)
+target_link_libraries(input_tests PRIVATE Eisenfront::Input SDL3::SDL3 unity)
+add_test(NAME input_tests COMMAND input_tests)
+set_tests_properties(input_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
