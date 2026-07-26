@@ -192,10 +192,43 @@ static void test_sampler_bind_unbind_produces_no_gl_error(void) {
     sampler_destroy(sampler);
 }
 
+static void test_reload_2d_swaps_gl_handle_in_place(void) {
+    char path[512];
+    path_for("red_4x4.bmp", path, sizeof(path));
+
+    Texture *texture = nullptr;
+    TEST_ASSERT_EQUAL(RESULT_OK, texture_load_2d(path, nullptr, &texture));
+    const uint32_t old_handle = texture_get_gl_handle(texture);
+
+    TEST_ASSERT_EQUAL(RESULT_OK, texture_reload(texture));
+    TEST_ASSERT_EQUAL(4, texture_get_width(texture));
+    TEST_ASSERT_TRUE(texture_get_gl_handle(texture) != 0);
+    /* Same wrapper identity, new underlying GL object - matches
+     * ShaderProgram's reload contract. */
+    TEST_ASSERT_NOT_EQUAL(old_handle, texture_get_gl_handle(texture));
+    TEST_ASSERT_EQUAL(GL_NO_ERROR, glGetError());
+
+    texture_release(texture);
+}
+
+static void test_reload_unsupported_for_arrays(void) {
+    char red_path[512], blue_path[512];
+    path_for("red_4x4.bmp", red_path, sizeof(red_path));
+    path_for("blue_4x4.bmp", blue_path, sizeof(blue_path));
+    const char *paths[2] = {red_path, blue_path};
+
+    Texture *texture = nullptr;
+    TEST_ASSERT_EQUAL(RESULT_OK, texture_load_2d_array(paths, 2, nullptr, &texture));
+    TEST_ASSERT_EQUAL(RESULT_ERROR_NOT_SUPPORTED, texture_reload(texture));
+    texture_release(texture);
+}
+
 int main(void) {
     UNITY_BEGIN();
 
     RUN_TEST(test_load_2d);
+    RUN_TEST(test_reload_2d_swaps_gl_handle_in_place);
+    RUN_TEST(test_reload_unsupported_for_arrays);
     RUN_TEST(test_duplicate_load_returns_cached_texture);
     RUN_TEST(test_missing_file_fails_to_load);
     RUN_TEST(test_bind_produces_no_gl_error);
