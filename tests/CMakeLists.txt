@@ -54,3 +54,26 @@ add_executable(mesh_tests mesh_tests/test_mesh.c)
 target_link_libraries(mesh_tests PRIVATE Eisenfront::Mesh unity)
 add_test(NAME mesh_tests COMMAND mesh_tests)
 set_tests_properties(mesh_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(camera_tests camera_tests/test_camera.c)
+target_link_libraries(camera_tests PRIVATE Eisenfront::Camera unity)
+add_test(NAME camera_tests COMMAND camera_tests)
+
+add_executable(material_tests material_tests/test_material.c)
+target_link_libraries(material_tests PRIVATE Eisenfront::Material unity)
+target_compile_definitions(material_tests PRIVATE
+    MATERIAL_TEST_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shader_tests/shaders"
+    MATERIAL_TEST_TEXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/texture_tests/images"
+)
+add_test(NAME material_tests COMMAND material_tests)
+set_tests_properties(material_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(asset_manager_tests asset_manager_tests/test_asset_manager.c)
+target_link_libraries(asset_manager_tests PRIVATE Eisenfront::AssetManager unity)
+target_compile_definitions(asset_manager_tests PRIVATE
+    ASSET_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset_manager_tests/data"
+    ASSET_TEST_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shader_tests/shaders"
+    ASSET_TEST_TEXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/texture_tests/images"
+)
+add_test(NAME asset_manager_tests COMMAND asset_manager_tests)
+set_tests_properties(asset_manager_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
