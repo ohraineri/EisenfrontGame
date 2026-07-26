@@ -33,6 +33,7 @@ if(NOT SDL3_FOUND)
     FetchContent_MakeAvailable(SDL3)
 endif()
 
+add_subdirectory(third_party/glad)
 add_subdirectory(engine)
 
 if(EISENFRONT_BUILD_TESTS)
