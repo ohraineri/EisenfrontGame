@@ -23,3 +23,8 @@ add_executable(graphics_tests graphics_tests/test_graphics.c)
 target_link_libraries(graphics_tests PRIVATE Eisenfront::Graphics unity)
 add_test(NAME graphics_tests COMMAND graphics_tests)
 set_tests_properties(graphics_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(renderer_tests renderer_tests/test_renderer.c)
+target_link_libraries(renderer_tests PRIVATE Eisenfront::Renderer unity)
+add_test(NAME renderer_tests COMMAND renderer_tests)
+set_tests_properties(renderer_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
