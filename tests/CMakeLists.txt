@@ -28,3 +28,11 @@ add_executable(renderer_tests renderer_tests/test_renderer.c)
 target_link_libraries(renderer_tests PRIVATE Eisenfront::Renderer unity)
 add_test(NAME renderer_tests COMMAND renderer_tests)
 set_tests_properties(renderer_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+add_executable(shader_tests shader_tests/test_shader.c)
+target_link_libraries(shader_tests PRIVATE Eisenfront::Shader Eisenfront::Graphics unity)
+target_compile_definitions(shader_tests PRIVATE
+    SHADER_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shader_tests/shaders"
+)
+add_test(NAME shader_tests COMMAND shader_tests)
+set_tests_properties(shader_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
