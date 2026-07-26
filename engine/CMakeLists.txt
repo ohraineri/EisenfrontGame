@@ -316,3 +316,25 @@ target_compile_options(eisenfront_material PRIVATE
 target_link_libraries(eisenfront_material PUBLIC
     Eisenfront::Shader Eisenfront::Texture Eisenfront::Buffers
 )
+
+# --- Scene -------------------------------------------------------------
+add_library(eisenfront_scene STATIC
+    src/scene/scene.c
+)
+add_library(Eisenfront::Scene ALIAS eisenfront_scene)
+
+target_include_directories(eisenfront_scene
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_scene PUBLIC c_std_23)
+
+target_compile_options(eisenfront_scene PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_scene PUBLIC Eisenfront::Core Eisenfront::Cglm)
+if(NOT WIN32)
+    target_link_libraries(eisenfront_scene PUBLIC m)
+endif()

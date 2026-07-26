@@ -59,6 +59,10 @@ add_executable(camera_tests camera_tests/test_camera.c)
 target_link_libraries(camera_tests PRIVATE Eisenfront::Camera unity)
 add_test(NAME camera_tests COMMAND camera_tests)
 
+add_executable(scene_tests scene_tests/test_scene.c)
+target_link_libraries(scene_tests PRIVATE Eisenfront::Scene unity)
+add_test(NAME scene_tests COMMAND scene_tests)
+
 add_executable(material_tests material_tests/test_material.c)
 target_link_libraries(material_tests PRIVATE Eisenfront::Material unity)
 target_compile_definitions(material_tests PRIVATE
