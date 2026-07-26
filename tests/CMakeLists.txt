@@ -17,6 +17,10 @@ target_compile_definitions(audio_tests PRIVATE
 )
 add_test(NAME audio_tests COMMAND audio_tests)
 
+add_executable(networking_tests networking_tests/test_networking.c)
+target_link_libraries(networking_tests PRIVATE Eisenfront::Networking unity)
+add_test(NAME networking_tests COMMAND networking_tests)
+
 add_executable(window_tests window_tests/test_window.c)
 target_link_libraries(window_tests PRIVATE Eisenfront::Window unity)
 add_test(NAME window_tests COMMAND window_tests)

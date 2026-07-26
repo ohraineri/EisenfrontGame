@@ -427,3 +427,23 @@ target_compile_options(eisenfront_audio PRIVATE
 
 target_link_libraries(eisenfront_audio PUBLIC Eisenfront::Core Eisenfront::Cglm)
 target_link_libraries(eisenfront_audio PRIVATE Eisenfront::Miniaudio)
+
+# --- Networking --------------------------------------------------------
+add_library(eisenfront_networking STATIC
+    src/networking/networking.c
+)
+add_library(Eisenfront::Networking ALIAS eisenfront_networking)
+
+target_include_directories(eisenfront_networking
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_networking PUBLIC c_std_23)
+
+target_compile_options(eisenfront_networking PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_networking PUBLIC Eisenfront::Core)
+target_link_libraries(eisenfront_networking PRIVATE Eisenfront::Enet)

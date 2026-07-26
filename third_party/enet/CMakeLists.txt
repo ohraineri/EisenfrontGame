@@ -33,6 +33,15 @@ add_library(Eisenfront::Enet ALIAS enet)
 
 target_include_directories(enet PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+if(NOT WIN32)
+    # Strict ISO C23 (-std=c23, no GNU extensions) hides POSIX/glibc
+    # declarations (getaddrinfo, getnameinfo, ...) that unix.c relies on
+    # without including any feature-test macro itself - the same issue
+    # this project's own Platform POSIX backend has, worked around the
+    # same way rather than by editing vendored source.
+    target_compile_definitions(enet PRIVATE _GNU_SOURCE)
+endif()
+
 foreach(feature HAS_FCNTL HAS_POLL HAS_GETADDRINFO HAS_GETNAMEINFO HAS_GETHOSTBYNAME_R
                  HAS_GETHOSTBYADDR_R HAS_INET_PTON HAS_INET_NTOP HAS_MSGHDR_FLAGS HAS_SOCKLEN_T)
     if(ENET_${feature})
