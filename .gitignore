@@ -1,0 +1,51 @@
+# Build output
+build/
+build-*/
+out/
+cmake-build-*/
+
+# CMake artifacts
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+Testing/
+
+# Compiled objects / binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.map
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.sln
+*.vcxproj*
+*.xcodeproj/
+*.xcworkspace/
+.cache/
+compile_commands.json
+*.swp
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
