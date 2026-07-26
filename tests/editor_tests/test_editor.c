@@ -29,6 +29,14 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    /* Always call editor_shutdown() here rather than at the end of each
+     * test body: a failed TEST_ASSERT unwinds out of the test function
+     * immediately (Unity uses longjmp), skipping anything after it - if
+     * cleanup lived there instead, one failing assertion would leave
+     * the Editor initialized and cascade into "ALREADY_INITIALIZED"
+     * failures on every test after it. editor_shutdown() is always
+     * safe to call, initialized or not. */
+    editor_shutdown();
     graphics_context_destroy(g_context);
     g_context = nullptr;
     window_destroy(g_window);
@@ -38,13 +46,11 @@ void tearDown(void) {
 
 static void test_init_shutdown(void) {
     TEST_ASSERT_EQUAL(RESULT_OK, editor_init(g_window, g_context));
-    editor_shutdown();
 }
 
 static void test_double_init_fails(void) {
     TEST_ASSERT_EQUAL(RESULT_OK, editor_init(g_window, g_context));
     TEST_ASSERT_EQUAL(RESULT_ERROR_ALREADY_INITIALIZED, editor_init(g_window, g_context));
-    editor_shutdown();
 }
 
 static void test_shutdown_without_init_is_safe(void) {
@@ -56,23 +62,32 @@ static void test_invalid_arguments_rejected(void) {
     TEST_ASSERT_EQUAL(RESULT_ERROR_INVALID_ARGUMENT, editor_init(g_window, nullptr));
 }
 
-static void test_frame_cycle_and_widget_calls(void) {
-    TEST_ASSERT_EQUAL(RESULT_OK, editor_init(g_window, g_context));
-
+static void run_one_frame(const char *label) {
     editor_new_frame();
-    igBegin("Test Window", nullptr, 0);
+    igBegin(label, nullptr, 0);
     igText("hello from a real ig* call");
     bool clicked = igButton("Click me", (ImVec2){0.0f, 0.0f});
     (void)clicked;
     igEnd();
     editor_render();
+}
+
+static void test_frame_cycle_and_widget_calls(void) {
+    TEST_ASSERT_EQUAL(RESULT_OK, editor_init(g_window, g_context));
+
+    /* ImGui's very first frame after a fresh context never produces
+     * draw commands - window sizing/font-atlas state settles over that
+     * frame rather than within it, a documented upstream quirk rather
+     * than anything specific to this wrapper. Render one throwaway
+     * frame first so the frame actually being asserted on is not that
+     * first one. */
+    run_one_frame("Test Window");
+    run_one_frame("Test Window");
 
     const ImDrawData *draw_data = igGetDrawData();
     TEST_ASSERT_NOT_NULL(draw_data);
     TEST_ASSERT_TRUE(draw_data->Valid);
     TEST_ASSERT_TRUE(draw_data->CmdListsCount >= 1);
-
-    editor_shutdown();
 }
 
 static void test_capture_flags_available_after_init(void) {
@@ -84,7 +99,6 @@ static void test_capture_flags_available_after_init(void) {
     (void)editor_wants_capture_mouse();
     (void)editor_wants_capture_keyboard();
     igEndFrame();
-    editor_shutdown();
 }
 
 static void test_capture_flags_false_before_init(void) {
