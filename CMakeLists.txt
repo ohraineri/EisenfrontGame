@@ -10,6 +10,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 option(EISENFRONT_BUILD_TESTS "Build Eisenfront unit tests" ON)
+option(EISENFRONT_BUILD_GAME "Build the Eisenfront Outpost vertical slice" ON)
 
 # The Editor module (Dear ImGui debug UI) must never ship in a Release
 # build - not merely disabled at runtime, but not even compiled in, so
@@ -57,6 +58,10 @@ if(EISENFRONT_BUILD_EDITOR)
     add_subdirectory(third_party/cimgui)
 endif()
 add_subdirectory(engine)
+
+if(EISENFRONT_BUILD_GAME)
+    add_subdirectory(Game)
+endif()
 
 if(EISENFRONT_BUILD_TESTS)
     FetchContent_Declare(
