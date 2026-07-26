@@ -189,3 +189,22 @@ target_compile_options(eisenfront_shader PRIVATE
 )
 
 target_link_libraries(eisenfront_shader PUBLIC Eisenfront::Graphics Eisenfront::Platform)
+
+# --- Buffers -------------------------------------------------------------
+add_library(eisenfront_buffers STATIC
+    src/buffers/buffers.c
+)
+add_library(Eisenfront::Buffers ALIAS eisenfront_buffers)
+
+target_include_directories(eisenfront_buffers
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_buffers PUBLIC c_std_23)
+
+target_compile_options(eisenfront_buffers PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_buffers PUBLIC Eisenfront::Graphics)
