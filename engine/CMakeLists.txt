@@ -385,3 +385,25 @@ target_link_libraries(eisenfront_renderer_fx PUBLIC
 if(NOT WIN32)
     target_link_libraries(eisenfront_renderer_fx PUBLIC m)
 endif()
+
+# --- Physics -------------------------------------------------------------
+add_library(eisenfront_physics STATIC
+    src/physics/physics.c
+)
+add_library(Eisenfront::Physics ALIAS eisenfront_physics)
+
+target_include_directories(eisenfront_physics
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_physics PUBLIC c_std_23)
+
+target_compile_options(eisenfront_physics PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_physics PUBLIC Eisenfront::Core Eisenfront::Cglm)
+if(NOT WIN32)
+    target_link_libraries(eisenfront_physics PUBLIC m)
+endif()
