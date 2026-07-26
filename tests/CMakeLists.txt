@@ -5,3 +5,10 @@ add_test(NAME platform_tests COMMAND platform_tests)
 add_executable(core_tests core_tests/test_core.c)
 target_link_libraries(core_tests PRIVATE Eisenfront::Core unity)
 add_test(NAME core_tests COMMAND core_tests)
+
+add_executable(window_tests window_tests/test_window.c)
+target_link_libraries(window_tests PRIVATE Eisenfront::Window unity)
+add_test(NAME window_tests COMMAND window_tests)
+# SDL3's dummy video driver needs no real display, X server, or GPU -
+# exactly what headless CI (and this sandbox) has.
+set_tests_properties(window_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy")
