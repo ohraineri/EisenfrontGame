@@ -88,4 +88,11 @@ ENGINE_API void graphics_context_set_debug_callback(GraphicsContext *context,
 ENGINE_API void graphics_context_get_version(const GraphicsContext *context, int32_t *out_major,
                                               int32_t *out_minor);
 
+/* Opaque SDL_GLContext - the same deliberate exception as
+ * window_get_native_handle() (see window.h's file header comment),
+ * needed only by code that must hand this context to SDL/ImGui
+ * directly (the Editor module's SDL3 backend init). Gameplay never
+ * calls this. */
+ENGINE_API void *graphics_context_get_native_handle(const GraphicsContext *context);
+
 #endif /* EISENFRONT_GRAPHICS_CONTEXT_H */
