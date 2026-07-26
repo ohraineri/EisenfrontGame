@@ -370,7 +370,10 @@ Result rigid_body_get_position(const PhysicsWorld *world, BodyId body, vec3 out_
     if (!rigid_body_is_valid(world, body)) {
         return RESULT_ERROR_INVALID_ARGUMENT;
     }
-    glm_vec3_copy(world->bodies[body_index_of(body)].position, out_position);
+    const Body *body_ptr = &world->bodies[body_index_of(body)];
+    out_position[0] = body_ptr->position[0];
+    out_position[1] = body_ptr->position[1];
+    out_position[2] = body_ptr->position[2];
     return RESULT_OK;
 }
 
@@ -378,7 +381,11 @@ Result rigid_body_get_rotation(const PhysicsWorld *world, BodyId body, versor ou
     if (!rigid_body_is_valid(world, body)) {
         return RESULT_ERROR_INVALID_ARGUMENT;
     }
-    glm_quat_copy(world->bodies[body_index_of(body)].rotation, out_rotation);
+    const Body *body_ptr = &world->bodies[body_index_of(body)];
+    out_rotation[0] = body_ptr->rotation[0];
+    out_rotation[1] = body_ptr->rotation[1];
+    out_rotation[2] = body_ptr->rotation[2];
+    out_rotation[3] = body_ptr->rotation[3];
     return RESULT_OK;
 }
 
@@ -397,7 +404,10 @@ Result rigid_body_get_linear_velocity(const PhysicsWorld *world, BodyId body, ve
     if (!rigid_body_is_valid(world, body)) {
         return RESULT_ERROR_INVALID_ARGUMENT;
     }
-    glm_vec3_copy(world->bodies[body_index_of(body)].linear_velocity, out_velocity);
+    const Body *body_ptr = &world->bodies[body_index_of(body)];
+    out_velocity[0] = body_ptr->linear_velocity[0];
+    out_velocity[1] = body_ptr->linear_velocity[1];
+    out_velocity[2] = body_ptr->linear_velocity[2];
     return RESULT_OK;
 }
 
@@ -904,7 +914,9 @@ void character_controller_get_position(const CharacterController *controller, ve
     if (controller == nullptr) {
         return;
     }
-    glm_vec3_copy(controller->position, out_position);
+    out_position[0] = controller->position[0];
+    out_position[1] = controller->position[1];
+    out_position[2] = controller->position[2];
 }
 
 bool character_controller_is_grounded(const CharacterController *controller) {
