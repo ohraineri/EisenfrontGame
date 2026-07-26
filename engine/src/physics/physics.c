@@ -905,7 +905,11 @@ void character_controller_move(CharacterController *controller, vec3 desired_dis
     /* Grounded probe: a short ray straight down from the capsule's
      * bottom cap. */
     controller->grounded = false;
-    vec3 probe_origin = {position[0], position[1] - controller->half_height, position[2]};
+    /* The capsule's actual lowest point is `radius` below its bottom
+     * axis endpoint (position.y - half_height), not the endpoint itself
+     * - the endpoint is the center of the bottom hemisphere cap. */
+    vec3 probe_origin = {position[0], position[1] - controller->half_height - controller->radius,
+                          position[2]};
     for (uint32_t i = 1; i <= controller->world->max_bodies; ++i) {
         const Body *body = &controller->world->bodies[i];
         if (!body->active || body->is_trigger) {
