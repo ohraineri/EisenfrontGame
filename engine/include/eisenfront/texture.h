@@ -12,7 +12,11 @@
  * texture is destroyed only once the count reaches zero.
  * texture_create_from_pixels() is for procedural/generated textures
  * with no backing file - it is reference-counted the same way but never
- * cached, since there is no path to key it on.
+ * cached, since there is no path to key it on. texture_reload() hot-
+ * reloads a path-loaded 2D texture in place; texture_decode_2d() /
+ * texture_upload_2d() expose the CPU-decode/GL-upload split that both
+ * texture_load_2d() and Asset Manager's async texture loading are built
+ * from.
  *
  * Sampler objects: a Texture carries its own default sampling
  * parameters (set once, at creation, via TextureParams), but a Sampler
@@ -74,6 +78,30 @@ typedef struct Texture Texture;
 
 ENGINE_API Result texture_load_2d(const char *path, const TextureParams *params,
                                    Texture **out_texture);
+
+/* Re-decodes and re-uploads texture's original source path in place,
+ * exactly like ShaderProgram's hot reload (see shader.h): existing
+ * texture_get_gl_handle() values must be re-fetched afterward. Only
+ * supported for TEXTURE_TYPE_2D; returns RESULT_ERROR_NOT_SUPPORTED for
+ * arrays and cubemaps. Only valid for textures loaded from a path (not
+ * texture_create_from_pixels()). */
+ENGINE_API Result texture_reload(Texture *texture);
+
+/* Split decode (pure CPU, thread-safe - safe to call from a worker
+ * thread) / upload (GL calls, main-thread only) primitives that
+ * texture_load_2d is itself built from. Asset Manager's async texture
+ * loading uses exactly this split: decode on a worker thread, upload
+ * during the next main-thread asset_manager_update(). */
+typedef struct TextureCpuImage {
+    void    *pixels;
+    uint32_t width;
+    uint32_t height;
+} TextureCpuImage;
+
+ENGINE_API Result texture_decode_2d(const char *path, TextureCpuImage *out_image);
+ENGINE_API void   texture_free_cpu_image(TextureCpuImage *image);
+ENGINE_API Result texture_upload_2d(const TextureCpuImage *image, const TextureParams *params,
+                                     Texture **out_texture);
 
 /* Every path must decode to the same width/height; each becomes one
  * array layer, in path order. */
