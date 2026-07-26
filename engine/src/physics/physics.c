@@ -316,7 +316,10 @@ Result rigid_body_create(PhysicsWorld *world, const RigidBodyDesc *desc, BodyId 
     body->type = desc->type;
     body->shape = desc->shape;
     glm_vec3_copy(desc->position, body->position);
-    glm_quat_copy((float *)desc->rotation, body->rotation);
+    body->rotation[0] = desc->rotation[0];
+    body->rotation[1] = desc->rotation[1];
+    body->rotation[2] = desc->rotation[2];
+    body->rotation[3] = desc->rotation[3];
     body->linear_velocity[0] = body->linear_velocity[1] = body->linear_velocity[2] = 0.0f;
     body->force_accum[0] = body->force_accum[1] = body->force_accum[2] = 0.0f;
     body->mass = (desc->type == BODY_TYPE_DYNAMIC && desc->mass > 0.0f) ? desc->mass : 0.0f;
