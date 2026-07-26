@@ -249,3 +249,27 @@ target_compile_options(eisenfront_mesh PRIVATE
 )
 
 target_link_libraries(eisenfront_mesh PUBLIC Eisenfront::Buffers)
+
+# --- Asset Manager -------------------------------------------------------
+# cgltf is a private implementation detail of asset_manager.c;
+# eisenfront/asset_manager.h never includes it.
+add_library(eisenfront_asset_manager STATIC
+    src/asset_manager/asset_manager.c
+)
+add_library(Eisenfront::AssetManager ALIAS eisenfront_asset_manager)
+
+target_include_directories(eisenfront_asset_manager
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_asset_manager PUBLIC c_std_23)
+
+target_compile_options(eisenfront_asset_manager PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_asset_manager PUBLIC
+    Eisenfront::Texture Eisenfront::Shader Eisenfront::Mesh Eisenfront::Platform
+)
+target_link_libraries(eisenfront_asset_manager PRIVATE Eisenfront::Cgltf)
