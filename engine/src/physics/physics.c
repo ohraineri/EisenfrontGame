@@ -755,7 +755,9 @@ Result character_controller_create(PhysicsWorld *world, const CharacterControlle
     controller->world = world;
     controller->radius = desc->radius;
     controller->half_height = desc->half_height;
-    glm_vec3_copy(desc->position, controller->position);
+    controller->position[0] = desc->position[0];
+    controller->position[1] = desc->position[1];
+    controller->position[2] = desc->position[2];
     controller->layer = desc->layer;
     controller->layer_mask = desc->layer_mask;
     controller->grounded = false;
