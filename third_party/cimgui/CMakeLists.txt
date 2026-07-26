@@ -18,6 +18,7 @@ add_library(cimgui STATIC
     cimgui.cpp
     cimgui_impl.cpp
     imgui/imgui.cpp
+    imgui/imgui_demo.cpp
     imgui/imgui_draw.cpp
     imgui/imgui_tables.cpp
     imgui/imgui_widgets.cpp
@@ -37,6 +38,12 @@ target_compile_definitions(cimgui PUBLIC
     CIMGUI_USE_OPENGL3
     IMGUI_IMPL_API=extern\ \"C\"
 )
+# INTERFACE-only, not PUBLIC: this tells cimgui.h/cimgui_impl.h to
+# emit plain C struct/typedef definitions for C consumers (editor.c and
+# anything else linking Eisenfront::Cimgui) - but must NOT reach this
+# target's own C++ compilation, which gets those same types for real
+# from imgui.h directly and would otherwise redefine them.
+target_compile_definitions(cimgui INTERFACE CIMGUI_DEFINE_ENUMS_AND_STRUCTS)
 # The OpenGL3 backend's own gl3w-based loader would redeclare every GL
 # symbol GLAD's own generated header already declares (see
 # third_party/glad); IMGUI_IMPL_OPENGL_LOADER_CUSTOM skips it, and
@@ -49,3 +56,17 @@ target_compile_options(cimgui PRIVATE
 
 target_link_libraries(cimgui PUBLIC Eisenfront::Glad)
 target_link_libraries(cimgui PRIVATE SDL3::SDL3)
+
+# Every consumer of this target is a plain C executable/library (Editor
+# and everything built on top of it): CMake picks a target's link
+# driver from its OWN sources only, so a C-only executable that merely
+# links this static C++ library never invokes g++/clang++ for its final
+# link step and is missing the C++ runtime support routines
+# (__cxa_guard_acquire, __gxx_personality_v0, ...) that ImGui's static
+# local variables and exception tables need. Linking the C++ standard
+# library explicitly, transitively through Eisenfront::Cimgui, fixes
+# that without requiring every consumer to know cimgui is C++ under the
+# hood. Not needed on MSVC, which links its C++ runtime unconditionally.
+if(NOT MSVC)
+    target_link_libraries(cimgui PUBLIC $<$<PLATFORM_ID:Darwin>:c++> $<$<NOT:$<PLATFORM_ID:Darwin>>:stdc++>)
+endif()
