@@ -295,3 +295,24 @@ target_link_libraries(eisenfront_camera PUBLIC Eisenfront::Core Eisenfront::Cglm
 if(NOT WIN32)
     target_link_libraries(eisenfront_camera PUBLIC m)
 endif()
+
+# --- Material -------------------------------------------------------------
+add_library(eisenfront_material STATIC
+    src/material/material.c
+)
+add_library(Eisenfront::Material ALIAS eisenfront_material)
+
+target_include_directories(eisenfront_material
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_material PUBLIC c_std_23)
+
+target_compile_options(eisenfront_material PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_material PUBLIC
+    Eisenfront::Shader Eisenfront::Texture Eisenfront::Buffers
+)
