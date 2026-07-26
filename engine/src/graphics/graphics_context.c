@@ -170,24 +170,39 @@ Result graphics_context_create(Window *window, const GraphicsContextDesc *desc,
     /* Step 8 - read back what the driver actually granted for the
      * framebuffer. Requested bit depths and sample counts from step 1
      * are hints the driver is free to round to the nearest format it
-     * actually supports. */
-    int value = 0;
-    SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &value);
-    context->framebuffer.red_bits = value;
-    SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &value);
-    context->framebuffer.green_bits = value;
-    SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &value);
-    context->framebuffer.blue_bits = value;
-    SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &value);
-    context->framebuffer.alpha_bits = value;
-    SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &value);
-    context->framebuffer.depth_bits = value;
-    SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &value);
-    context->framebuffer.stencil_bits = value;
-    SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &value);
-    context->framebuffer.msaa_samples = value;
-    SDL_GL_GetAttribute(SDL_GL_DOUBLEBUFFER, &value);
-    context->framebuffer.double_buffered = (value != 0);
+     * actually supports, and are queried straight from GL rather than
+     * via SDL_GL_GetAttribute: the latter only reflects the EGL/GLX
+     * config attribute list, which not every backend populates (this
+     * engine's own offscreen/EGL test backend does not); querying the
+     * default framebuffer's attachments directly is the core-profile-
+     * correct way to ask GL itself, and always works. */
+    GLint color_bits = 0;
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_BACK_LEFT,
+                                           GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE, &color_bits);
+    context->framebuffer.red_bits = color_bits;
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_BACK_LEFT,
+                                           GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE, &color_bits);
+    context->framebuffer.green_bits = color_bits;
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_BACK_LEFT,
+                                           GL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE, &color_bits);
+    context->framebuffer.blue_bits = color_bits;
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_BACK_LEFT,
+                                           GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE, &color_bits);
+    context->framebuffer.alpha_bits = color_bits;
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_DEPTH,
+                                           GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &color_bits);
+    context->framebuffer.depth_bits = color_bits;
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL,
+                                           GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &color_bits);
+    context->framebuffer.stencil_bits = color_bits;
+
+    GLint samples = 0;
+    glGetIntegerv(GL_SAMPLES, &samples);
+    context->framebuffer.msaa_samples = samples;
+
+    GLboolean double_buffered = GL_FALSE;
+    glGetBooleanv(GL_DOUBLEBUFFER, &double_buffered);
+    context->framebuffer.double_buffered = (double_buffered != GL_FALSE);
 
     LOG_INFO(GRAPHICS_LOG_CATEGORY, "OpenGL %d.%d core context created (%s / %s)",
              context->version_major, context->version_minor, (const char *)glGetString(GL_RENDERER),
