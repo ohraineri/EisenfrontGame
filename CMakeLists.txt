@@ -22,6 +22,10 @@ if(EISENFRONT_BUILD_TESTS)
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(unity)
+    # PUBLIC: Unity's double-precision assertion support is a compile-time
+    # choice baked into libunity itself, not just call sites, so every
+    # consumer must agree with it.
+    target_compile_definitions(unity PUBLIC UNITY_INCLUDE_DOUBLE)
 
     enable_testing()
     add_subdirectory(tests)
