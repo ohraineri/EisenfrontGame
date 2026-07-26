@@ -911,18 +911,21 @@ void character_controller_move(CharacterController *controller, vec3 desired_dis
         if (!body->active || body->is_trigger) {
             continue;
         }
+        vec3 body_pos;
+        copy3(body->position, body_pos);
+
         float t = 0.0f;
         bool  hit = false;
         vec3  down = {0.0f, -1.0f, 0.0f};
         if (body->shape.type == SHAPE_TYPE_BOX) {
-            hit = ray_aabb(probe_origin, down, body->position, body->shape.half_extents,
-                            controller->radius * 0.3f, &t);
+            vec3 half_extents;
+            copy3(body->shape.half_extents, half_extents);
+            hit = ray_aabb(probe_origin, down, body_pos, half_extents, controller->radius * 0.3f, &t);
         } else {
             const float radius = (body->shape.type == SHAPE_TYPE_CAPSULE)
                                       ? body->shape.radius + body->shape.half_height
                                       : body->shape.radius;
-            hit = ray_sphere(probe_origin, down, body->position, radius, controller->radius * 0.3f,
-                              &t);
+            hit = ray_sphere(probe_origin, down, body_pos, radius, controller->radius * 0.3f, &t);
         }
         if (hit) {
             controller->grounded = true;
