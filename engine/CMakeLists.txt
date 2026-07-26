@@ -57,3 +57,30 @@ if(NOT WIN32)
 endif()
 # Windows needs no extra link libraries: kernel32 (threads, sync, files,
 # LoadLibrary) is linked by default by every supported toolchain.
+
+# --- Core -------------------------------------------------------------
+# Core depends only on Platform (never SDL3 or any other third party
+# library directly); see eisenfront/core.h.
+add_library(eisenfront_core STATIC
+    src/core/core_assert.c
+    src/core/core_error.c
+    src/core/core_log.c
+    src/core/core_stopwatch.c
+    src/core/core_config.c
+    src/core/core_module.c
+    src/core/core_engine.c
+)
+add_library(Eisenfront::Core ALIAS eisenfront_core)
+
+target_include_directories(eisenfront_core
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(eisenfront_core PUBLIC c_std_23)
+
+target_compile_options(eisenfront_core PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Wshadow -Werror>
+    $<$<C_COMPILER_ID:MSVC>:/W4 /WX>
+)
+
+target_link_libraries(eisenfront_core PUBLIC Eisenfront::Platform)
