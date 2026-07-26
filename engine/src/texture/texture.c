@@ -19,6 +19,11 @@ struct Texture {
     uint32_t    width;
     uint32_t    height;
     uint32_t    ref_count;
+    /* Populated only for a texture loaded by texture_load_2d(); empty
+     * for arrays, cubemaps, and texture_create_from_pixels() results.
+     * texture_reload() needs it to know what to re-decode. */
+    char          source_path[512];
+    TextureParams params; /* preserved across texture_reload() */
 };
 
 struct Sampler {
@@ -106,6 +111,9 @@ static void build_joined_key(const char *const *paths, uint32_t count, char *out
     }
 }
 
+/* Internal helper shared by texture_decode_2d() and the array/cubemap
+ * loaders below, which decode straight into their own stack-local
+ * per-face/per-layer structs rather than the public TextureCpuImage. */
 typedef struct DecodedImage {
     unsigned char *pixels;
     int            width;
@@ -143,6 +151,29 @@ static Result decode_image_from_path(const char *path, DecodedImage *out_image) 
 }
 
 static void free_decoded_image(DecodedImage *image) {
+    stbi_image_free(image->pixels);
+    image->pixels = nullptr;
+}
+
+Result texture_decode_2d(const char *path, TextureCpuImage *out_image) {
+    if (path == nullptr || out_image == nullptr) {
+        return RESULT_ERROR_INVALID_ARGUMENT;
+    }
+    DecodedImage decoded;
+    const Result result = decode_image_from_path(path, &decoded);
+    if (result != RESULT_OK) {
+        return result;
+    }
+    out_image->pixels = decoded.pixels;
+    out_image->width = (uint32_t)decoded.width;
+    out_image->height = (uint32_t)decoded.height;
+    return RESULT_OK;
+}
+
+void texture_free_cpu_image(TextureCpuImage *image) {
+    if (image == nullptr) {
+        return;
+    }
     stbi_image_free(image->pixels);
     image->pixels = nullptr;
 }
@@ -225,6 +256,44 @@ static void apply_sampler_params(GLuint gl_sampler, const TextureParams *params)
     }
 }
 
+Result texture_upload_2d(const TextureCpuImage *image, const TextureParams *params,
+                          Texture **out_texture) {
+    if (image == nullptr || image->pixels == nullptr || out_texture == nullptr) {
+        return RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    const TextureParams effective = (params != nullptr) ? *params : texture_params_default();
+
+    GLuint gl_texture = 0;
+    glCreateTextures(GL_TEXTURE_2D, 1, &gl_texture);
+    const GLsizei levels =
+        effective.generate_mipmaps ? mip_level_count(image->width, image->height) : 1;
+    glTextureStorage2D(gl_texture, levels, GL_RGBA8, (GLsizei)image->width, (GLsizei)image->height);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTextureSubImage2D(gl_texture, 0, 0, 0, (GLsizei)image->width, (GLsizei)image->height,
+                         GL_RGBA, GL_UNSIGNED_BYTE, image->pixels);
+    if (effective.generate_mipmaps) {
+        glGenerateTextureMipmap(gl_texture);
+    }
+    apply_texture_params(gl_texture, &effective);
+
+    Texture *texture = malloc(sizeof(*texture));
+    if (texture == nullptr) {
+        glDeleteTextures(1, &gl_texture);
+        return RESULT_ERROR_OUT_OF_MEMORY;
+    }
+    texture->gl_texture = gl_texture;
+    texture->type = TEXTURE_TYPE_2D;
+    texture->width = image->width;
+    texture->height = image->height;
+    texture->ref_count = 1;
+    texture->source_path[0] = '\0';
+    texture->params = effective;
+
+    *out_texture = texture;
+    return RESULT_OK;
+}
+
 Result texture_load_2d(const char *path, const TextureParams *params, Texture **out_texture) {
     if (path == nullptr || out_texture == nullptr) {
         return RESULT_ERROR_INVALID_ARGUMENT;
@@ -240,45 +309,67 @@ Result texture_load_2d(const char *path, const TextureParams *params, Texture **
         return RESULT_OK;
     }
 
-    DecodedImage image;
-    Result       result = decode_image_from_path(path, &image);
+    TextureCpuImage image;
+    Result          result = texture_decode_2d(path, &image);
     if (result != RESULT_OK) {
         return result;
     }
 
-    const TextureParams effective = (params != nullptr) ? *params : texture_params_default();
-
-    GLuint gl_texture = 0;
-    glCreateTextures(GL_TEXTURE_2D, 1, &gl_texture);
-    const GLsizei levels = effective.generate_mipmaps
-                                ? mip_level_count((uint32_t)image.width, (uint32_t)image.height)
-                                : 1;
-    glTextureStorage2D(gl_texture, levels, GL_RGBA8, image.width, image.height);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTextureSubImage2D(gl_texture, 0, 0, 0, image.width, image.height, GL_RGBA, GL_UNSIGNED_BYTE,
-                         image.pixels);
-    if (effective.generate_mipmaps) {
-        glGenerateTextureMipmap(gl_texture);
+    Texture *texture = nullptr;
+    result = texture_upload_2d(&image, params, &texture);
+    texture_free_cpu_image(&image);
+    if (result != RESULT_OK) {
+        return result;
     }
-    apply_texture_params(gl_texture, &effective);
-    free_decoded_image(&image);
 
-    Texture *texture = malloc(sizeof(*texture));
-    if (texture == nullptr) {
-        glDeleteTextures(1, &gl_texture);
-        return RESULT_ERROR_OUT_OF_MEMORY;
-    }
-    texture->gl_texture = gl_texture;
-    texture->type = TEXTURE_TYPE_2D;
-    texture->width = (uint32_t)image.width;
-    texture->height = (uint32_t)image.height;
-    texture->ref_count = 1;
-
+    snprintf(texture->source_path, sizeof(texture->source_path), "%s", path);
     cache_insert(path, texture);
     LOG_INFO(TEXTURE_LOG_CATEGORY, "Loaded texture '%s' (%ux%u)", path, texture->width,
              texture->height);
 
     *out_texture = texture;
+    return RESULT_OK;
+}
+
+Result texture_reload(Texture *texture) {
+    ASSERT(texture != nullptr);
+    if (texture == nullptr) {
+        return RESULT_ERROR_INVALID_ARGUMENT;
+    }
+    if (texture->type != TEXTURE_TYPE_2D) {
+        return RESULT_ERROR_NOT_SUPPORTED;
+    }
+    if (texture->source_path[0] == '\0') {
+        return RESULT_ERROR_INVALID_STATE;
+    }
+
+    TextureCpuImage image;
+    Result          result = texture_decode_2d(texture->source_path, &image);
+    if (result != RESULT_OK) {
+        LOG_WARN(TEXTURE_LOG_CATEGORY, "Hot reload failed for '%s'; keeping the last working texture",
+                 texture->source_path);
+        return result;
+    }
+
+    Texture *replacement = nullptr;
+    result = texture_upload_2d(&image, &texture->params, &replacement);
+    texture_free_cpu_image(&image);
+    if (result != RESULT_OK) {
+        LOG_WARN(TEXTURE_LOG_CATEGORY, "Hot reload failed for '%s'; keeping the last working texture",
+                 texture->source_path);
+        return result;
+    }
+
+    /* Swap the GL object in place - texture (the pointer every caller
+     * holds) keeps its identity, exactly like ShaderProgram's reload. */
+    const GLuint old_gl_texture = texture->gl_texture;
+    texture->gl_texture = replacement->gl_texture;
+    texture->width = replacement->width;
+    texture->height = replacement->height;
+    free(replacement);
+
+    glDeleteTextures(1, &old_gl_texture);
+    LOG_INFO(TEXTURE_LOG_CATEGORY, "Reloaded texture '%s'", texture->source_path);
     return RESULT_OK;
 }
 
@@ -353,6 +444,8 @@ Result texture_load_2d_array(const char *const *paths, uint32_t layer_count,
     texture->width = (uint32_t)width;
     texture->height = (uint32_t)height;
     texture->ref_count = 1;
+    texture->source_path[0] = '\0'; /* texture_reload() only supports TEXTURE_TYPE_2D */
+    texture->params = effective;
 
     cache_insert(key, texture);
     LOG_INFO(TEXTURE_LOG_CATEGORY, "Loaded texture array '%s' (%u layers)", key, layer_count);
@@ -434,6 +527,8 @@ Result texture_load_cubemap(const char *const paths[6], const TextureParams *par
     texture->width = (uint32_t)size;
     texture->height = (uint32_t)size;
     texture->ref_count = 1;
+    texture->source_path[0] = '\0'; /* texture_reload() only supports TEXTURE_TYPE_2D */
+    texture->params = effective;
 
     cache_insert(key, texture);
     LOG_INFO(TEXTURE_LOG_CATEGORY, "Loaded cubemap '%s' (%dx%d)", key, size, size);
