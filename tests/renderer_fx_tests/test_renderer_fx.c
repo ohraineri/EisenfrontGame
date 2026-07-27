@@ -241,6 +241,67 @@ static void test_postprocess_pipeline_runs_without_gl_error(void) {
     postprocess_destroy(pp);
 }
 
+/* Regression test: postprocess_resolve_and_apply()'s bloom ping-pong
+ * loop binds its own half-resolution internal framebuffers
+ * (bloom_a/bloom_b) and previously left the last one of those bound
+ * for the final composite draw too, instead of the framebuffer the
+ * caller bound before calling this function - the composite quad
+ * silently rendered into a small internal buffer nobody ever read,
+ * leaving the caller's real target only partially covered by whatever
+ * had been drawn there earlier. Only reproduces with bloom enabled
+ * (the no-bloom path never touches those buffers). */
+static void test_postprocess_with_bloom_composites_into_callers_framebuffer(void) {
+    PostProcessDesc desc = postprocess_desc_default(128, 96);
+    desc.enable_bloom = true;
+    PostProcess *pp = nullptr;
+    TEST_ASSERT_EQUAL(RESULT_OK, postprocess_create(&desc, &pp));
+
+    postprocess_begin_scene(pp);
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f); /* < bloom_threshold: composite alone must still land this */
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    framebuffer_bind_default(128, 96);
+    /* Known sentinel before the composite draw, so the pixel check
+     * below proves the composite actually overwrote it rather than
+     * coincidentally matching leftover content from an earlier test. */
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    GLint expected_draw_framebuffer = 0;
+    GLint expected_read_framebuffer = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &expected_draw_framebuffer);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &expected_read_framebuffer);
+
+    postprocess_resolve_and_apply(pp, 128, 96);
+
+    /* Both bindings, not just the draw one: framebuffer_bind() (used
+     * throughout the internal bloom ping-pong loop) binds via plain
+     * GL_FRAMEBUFFER, setting draw AND read together, so a fix that
+     * only restored GL_DRAW_FRAMEBUFFER would leave GL_READ_FRAMEBUFFER
+     * on a stale half-resolution bloom buffer - the composite draw
+     * would still land correctly (this alone wouldn't catch that), but
+     * a caller's subsequent glReadPixels() (e.g. a screenshot) would
+     * silently read the wrong buffer. That's exactly what the pixel
+     * check below verifies directly. */
+    GLint actual_draw_framebuffer = 0;
+    GLint actual_read_framebuffer = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &actual_draw_framebuffer);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &actual_read_framebuffer);
+    TEST_ASSERT_EQUAL(expected_draw_framebuffer, actual_draw_framebuffer);
+    TEST_ASSERT_EQUAL(expected_read_framebuffer, actual_read_framebuffer);
+    TEST_ASSERT_EQUAL(GL_NO_ERROR, glGetError());
+
+    /* The strongest check: read back an actual composited pixel from
+     * the caller's framebuffer and confirm it isn't just whatever was
+     * there before (0,0,0,0 - this offscreen surface's clear state) -
+     * i.e. the composite draw's output is actually reachable from the
+     * framebuffer binding the caller expects to read from. */
+    uint8_t pixel[4] = {0, 0, 0, 0};
+    glReadPixels(64, 48, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    TEST_ASSERT_TRUE(pixel[0] > 0 || pixel[1] > 0 || pixel[2] > 0);
+
+    postprocess_destroy(pp);
+}
+
 static void test_postprocess_without_bloom(void) {
     PostProcessDesc desc = postprocess_desc_default(64, 64);
     desc.enable_bloom = false;
@@ -267,6 +328,7 @@ int main(void) {
     RUN_TEST(test_skybox_renders_without_gl_error);
     RUN_TEST(test_shadow_map_depth_pass_writes_depth);
     RUN_TEST(test_postprocess_pipeline_runs_without_gl_error);
+    RUN_TEST(test_postprocess_with_bloom_composites_into_callers_framebuffer);
     RUN_TEST(test_postprocess_without_bloom);
 
     return UNITY_END();

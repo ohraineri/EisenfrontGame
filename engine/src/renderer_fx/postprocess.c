@@ -258,6 +258,25 @@ void postprocess_resolve_and_apply(PostProcess *pp, uint32_t output_width, uint3
         return;
     }
 
+    /* The bloom ping-pong loop below (when enabled) leaves whichever of
+     * bloom_a/bloom_b it last wrote to as the bound framebuffer - a
+     * half-resolution internal target, never the caller's intended
+     * output. Capturing it here and restoring it right before the
+     * composite draw is what makes good on this function's own
+     * documented contract ("writing to whatever framebuffer is
+     * currently bound to GL_DRAW_FRAMEBUFFER" - i.e. bound at the
+     * moment the caller invoked this function, not wherever an
+     * internal pass happened to leave it). Both the draw AND read
+     * targets need capturing/restoring: framebuffer_bind() (used
+     * throughout the bloom loop below) binds via plain GL_FRAMEBUFFER,
+     * which sets both simultaneously, so leaving GL_READ_FRAMEBUFFER on
+     * a stale bloom buffer would make a caller's subsequent
+     * glReadPixels() (e.g. a screenshot) silently read the wrong,
+     * wrong-sized buffer even though the composite draw itself lands
+     * correctly on GL_DRAW_FRAMEBUFFER. */
+    GLint caller_framebuffer = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &caller_framebuffer);
+
     framebuffer_resolve_to(pp->scene_fb, pp->resolve_fb);
 
     uint32_t bloom_result_texture = 0;
@@ -297,6 +316,10 @@ void postprocess_resolve_and_apply(PostProcess *pp, uint32_t output_width, uint3
         bloom_result_texture = framebuffer_get_color_texture(src);
     }
 
+    /* GL_FRAMEBUFFER, not GL_DRAW_FRAMEBUFFER: restores both the draw
+     * and read targets in one call, matching how framebuffer_bind()
+     * itself always binds both together (see the comment above). */
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)caller_framebuffer);
     glViewport(0, 0, (GLsizei)output_width, (GLsizei)output_height);
     glUseProgram(pp->composite_program);
     glBindTextureUnit(0, framebuffer_get_color_texture(pp->resolve_fb));
