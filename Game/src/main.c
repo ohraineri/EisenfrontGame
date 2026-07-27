@@ -10,6 +10,10 @@
  * a watchtower, two structures and scattered props, built through
  * Scene's node hierarchy with matching static Physics bodies. The
  * Phase 2 reference cube is gone, superseded by real content.
+ * Phase 5: the freecam is gone - player.c now drives a real
+ * CharacterController (collide-and-slide against every static body
+ * above, plus Game-managed gravity/jump; see player.c's file header
+ * comment on why gravity isn't automatic).
  *
  * Renderer/Material integration note (discovered building this phase,
  * not assumed going in): renderer_end_frame() defers every queued
@@ -308,9 +312,15 @@ int main(void) {
 
     /* Spawn south of the checkpoint, facing north through the entrance
      * gap toward the watchtower and the compound beyond - the natural
-     * first approach to a defended position, not dropped inside it. */
-    Player player = player_create((vec3){0.0f, 1.75f, -32.0f},
-                                   (float)window_desc.width / (float)window_desc.height);
+     * first approach to a defended position, not dropped inside it.
+     * Y is the capsule CENTER (radius + half_height above the ground),
+     * not eye height - player_create() derives eye height from it. */
+    Player player;
+    if (player_create(physics_world, (vec3){0.0f, 0.9f, -32.0f},
+                       (float)window_desc.width / (float)window_desc.height, &player) != RESULT_OK) {
+        LOG_ERROR(OUTPOST_LOG_CATEGORY, "failed to create the player character controller");
+        return 1;
+    }
     player.camera.yaw_radians = glm_rad(90.0f);
 
     const DrawableGroup ground_group = {.shader = lit_shader, .material = ground_material, .mesh = ground_mesh};
@@ -343,9 +353,28 @@ int main(void) {
         }
 
         frame_clock_tick(&clock);
-        const float delta_seconds = (float)frame_clock_delta_seconds(&clock);
+        /* Clamped rather than raw wall-clock delta: a debugger pause, a
+         * slow first frame (shader compiles above), or - as measured in
+         * this sandbox - the offscreen SDL driver's own swap timing can
+         * all produce a huge single-frame delta. Fed straight into
+         * gravity integration that compounds every frame, an
+         * unclamped delta explodes the player's vertical velocity in
+         * one step (observed here as the character launching through
+         * the roof on the very first physics-driven frame). Standard
+         * fix: cap the simulated step regardless of real elapsed time -
+         * the game runs in slow motion during a real hitch instead of
+         * blowing up, which is the correct tradeoff. */
+        float delta_seconds = (float)frame_clock_delta_seconds(&clock);
+        if (delta_seconds > 1.0f / 30.0f) {
+            delta_seconds = 1.0f / 30.0f;
+        }
 
-        player_update_freecam(&player, delta_seconds);
+        /* Every static body here needs no integration, but a real game
+         * always steps its physics world once per frame regardless -
+         * this stays a no-op today and starts mattering the moment
+         * anything dynamic/kinematic exists (Phase 6's AI soldiers). */
+        physics_world_step(physics_world, delta_seconds);
+        player_update(&player, delta_seconds);
 
         int32_t width, height;
         window_get_size_in_pixels(window, &width, &height);
@@ -425,6 +454,7 @@ int main(void) {
     postprocess_destroy(postprocess);
     shadow_map_destroy(shadow_map);
     lighting_environment_destroy(lighting);
+    player_destroy(&player);
     outpost_level_destroy(&outpost_level, physics_world);
     rigid_body_destroy(physics_world, ground_body);
     physics_world_destroy(physics_world);

@@ -1,26 +1,41 @@
 /*
- * Player - camera + input for now (Phase 2: freecam, no collision).
- * Phase 5 replaces player_update_freecam() with a real
- * CharacterController-driven update without changing this struct's
- * shape (the camera stays the single source of truth for where the
- * player is looking/standing).
+ * Player - camera + input + a real Physics CharacterController.
+ * Replaces Phase 2's collision-free freecam: movement is now
+ * collide-and-slide against every static body in the outpost (see
+ * outpost_scene.c), with simple gravity/jump layered on top in Game
+ * code, since CharacterController itself only does collide-and-slide
+ * for whatever displacement it's given each call - it does not
+ * integrate gravity on its own (unlike a BODY_TYPE_DYNAMIC rigid body;
+ * see physics.h). The camera position is derived every frame from the
+ * controller's capsule position plus a fixed eye-height offset, never
+ * set directly - the controller is the single source of truth for
+ * where the player physically is.
  */
 #ifndef OUTPOST_PLAYER_H
 #define OUTPOST_PLAYER_H
 
 #include "eisenfront/camera.h"
+#include "eisenfront/physics.h"
 #include "eisenfront/window.h"
 
 typedef struct Player {
-    Camera camera;
-    float  move_speed_units_per_sec;
-    float  look_sensitivity_radians_per_pixel;
+    Camera                camera;
+    CharacterController  *controller; /* owned */
+    float                 move_speed_units_per_sec;
+    float                 look_sensitivity_radians_per_pixel;
+    float                 vertical_velocity;
+    float                 eye_height_offset; /* above the controller's capsule center */
 } Player;
 
-Player player_create(vec3 start_position, float aspect_ratio);
+/* start_position is where the capsule's CENTER spawns, not the eye -
+ * see eye_height_offset. world must outlive the player. */
+Result player_create(PhysicsWorld *world, vec3 start_position, float aspect_ratio,
+                      Player *out_player);
+void   player_destroy(Player *player);
 
 /* Mouse-look (relative mode must already be enabled on the window) +
- * WASD/space/ctrl fly movement, no collision. */
-void player_update_freecam(Player *player, float delta_seconds);
+ * WASD ground movement + space to jump, collide-and-slide against the
+ * physics world via the CharacterController. */
+void player_update(Player *player, float delta_seconds);
 
 #endif /* OUTPOST_PLAYER_H */
