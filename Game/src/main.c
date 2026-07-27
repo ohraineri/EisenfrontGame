@@ -14,6 +14,11 @@
  * CharacterController (collide-and-slide against every static body
  * above, plus Game-managed gravity/jump; see player.c's file header
  * comment on why gravity isn't automatic).
+ * Phase 6: AI soldiers (ai_soldier.c) - the repo's first real ECS
+ * gameplay layer, four capsule-collision soldiers patrolling fixed
+ * loops, kept in sync with kinematic Physics bodies the player
+ * collides against. First use of the per-object uModel path in
+ * lit.vert (everything before this was pre-baked to world space).
  *
  * Renderer/Material integration note (discovered building this phase,
  * not assumed going in): renderer_end_frame() defers every queued
@@ -48,6 +53,7 @@
 
 #include "eisenfront/audio.h"
 
+#include "ai_soldier.h"
 #include "ground_texture.h"
 #include "outpost_scene.h"
 #include "player.h"
@@ -82,6 +88,7 @@ typedef struct DrawableGroup {
     ShaderProgram *shader;
     Material      *material;
     Mesh          *mesh;
+    mat4           model; /* identity for pre-baked-to-world-space static geometry */
 } DrawableGroup;
 
 /* See the file header comment: flushing immediately, once per group,
@@ -95,6 +102,7 @@ static void draw_group(Renderer *renderer, const DrawableGroup *group, mat4 view
     material_bind(group->material);
     shader_set_uniform_mat4(group->shader, "uView", (const float *)view);
     shader_set_uniform_mat4(group->shader, "uProj", (const float *)proj);
+    shader_set_uniform_mat4(group->shader, "uModel", (const float *)group->model);
     shader_set_uniform_mat4(group->shader, "uLightSpaceMatrix", (const float *)light_space_matrix);
     shader_set_uniform_3f(group->shader, "uCameraPos", camera_position[0], camera_position[1],
                             camera_position[2]);
@@ -273,6 +281,12 @@ int main(void) {
         return 1;
     }
 
+    AiSoldierSquad soldier_squad = {0};
+    if (ai_soldier_squad_create(lit_shader, physics_world, &soldier_squad) != RESULT_OK) {
+        LOG_ERROR(OUTPOST_LOG_CATEGORY, "failed to create the AI soldier squad");
+        return 1;
+    }
+
     LightingEnvironment *lighting = nullptr;
     lighting_environment_create(&lighting);
     vec3 sun_direction = {-0.35f, -0.85f, -0.4f};
@@ -323,7 +337,8 @@ int main(void) {
     }
     player.camera.yaw_radians = glm_rad(90.0f);
 
-    const DrawableGroup ground_group = {.shader = lit_shader, .material = ground_material, .mesh = ground_mesh};
+    DrawableGroup ground_group = {.shader = lit_shader, .material = ground_material, .mesh = ground_mesh};
+    glm_mat4_identity(ground_group.model);
 
     FrameClock clock;
     frame_clock_init(&clock);
@@ -369,11 +384,16 @@ int main(void) {
             delta_seconds = 1.0f / 30.0f;
         }
 
-        /* Every static body here needs no integration, but a real game
-         * always steps its physics world once per frame regardless -
-         * this stays a no-op today and starts mattering the moment
-         * anything dynamic/kinematic exists (Phase 6's AI soldiers). */
+        /* Every body here is either static or a kinematic soldier moved
+         * by direct rigid_body_set_transform() (see ai_soldier.c) - no
+         * dynamic body ever needs physics_world_step()'s own force/
+         * gravity integration in this scene, and the player's
+         * CharacterController sweeps live body positions itself,
+         * independent of this call. Still stepped every frame, as any
+         * real game would, so it's already wired for the moment
+         * something dynamic does exist. */
         physics_world_step(physics_world, delta_seconds);
+        ai_soldier_squad_update(&soldier_squad, delta_seconds);
         player_update(&player, delta_seconds);
 
         int32_t width, height;
@@ -396,6 +416,13 @@ int main(void) {
             const StaticObject *object = &outpost_level.objects[i];
             shadow_map_draw(shadow_map, identity_model, mesh_get_vertex_array_handle(object->mesh),
                              mesh_get_vertex_count(object->mesh), mesh_get_index_count(object->mesh));
+        }
+        for (uint32_t i = 0; i < soldier_squad.count; ++i) {
+            mat4 soldier_model;
+            ai_soldier_get_world_matrix(&soldier_squad, i, soldier_model);
+            shadow_map_draw(shadow_map, soldier_model, mesh_get_vertex_array_handle(soldier_squad.mesh),
+                             mesh_get_vertex_count(soldier_squad.mesh),
+                             mesh_get_index_count(soldier_squad.mesh));
         }
         /* Binds the HDR scene framebuffer postprocess_resolve_and_apply()
          * later reads from - replaces the plain framebuffer_bind_default()
@@ -423,8 +450,16 @@ int main(void) {
                    player.camera.position);
         for (uint32_t i = 0; i < outpost_level.object_count; ++i) {
             const StaticObject *object = &outpost_level.objects[i];
-            const DrawableGroup group = {
+            DrawableGroup group = {
                 .shader = lit_shader, .material = object->material, .mesh = object->mesh};
+            glm_mat4_identity(group.model);
+            draw_group(renderer, &group, view, proj, light_space_matrix, shadow_depth_texture,
+                       player.camera.position);
+        }
+        for (uint32_t i = 0; i < soldier_squad.count; ++i) {
+            DrawableGroup group = {
+                .shader = lit_shader, .material = soldier_squad.material, .mesh = soldier_squad.mesh};
+            ai_soldier_get_world_matrix(&soldier_squad, i, group.model);
             draw_group(renderer, &group, view, proj, light_space_matrix, shadow_depth_texture,
                        player.camera.position);
         }
@@ -455,6 +490,7 @@ int main(void) {
     shadow_map_destroy(shadow_map);
     lighting_environment_destroy(lighting);
     player_destroy(&player);
+    ai_soldier_squad_destroy(&soldier_squad);
     outpost_level_destroy(&outpost_level, physics_world);
     rigid_body_destroy(physics_world, ground_body);
     physics_world_destroy(physics_world);

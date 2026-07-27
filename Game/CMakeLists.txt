@@ -4,6 +4,7 @@
 # file stays an accurate map of what the slice actually touches.
 add_executable(outpost
     src/main.c
+    src/ai_soldier.c
     src/ground_texture.c
     src/outpost_scene.c
     src/player.c
