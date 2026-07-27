@@ -32,6 +32,9 @@
  * editor_process_raw_event() are exposed directly (an engine-level
  * fix), main() re-registers one small combined callback after both
  * _init() calls, so neither one silently loses events to the other.
+ * Phase 9: OUTPOST_SMOKE_TEST_DIR - a scripted flythrough to five
+ * vantage points around the outpost, one screenshot each, the final
+ * pass's primary verification tool.
  *
  * Renderer/Material integration note (discovered building this phase,
  * not assumed going in): renderer_end_frame() defers every queued
@@ -167,6 +170,13 @@ static void draw_group(Renderer *renderer, const DrawableGroup *group, mat4 view
     renderer_end_frame(renderer);
     accumulate_stats(renderer);
 }
+
+typedef struct SmokeTestWaypoint {
+    const char *label;
+    vec3        position;
+    float       yaw_radians;
+    float       pitch_radians;
+} SmokeTestWaypoint;
 
 int main(void) {
     log_init(LOG_LEVEL_INFO);
@@ -423,6 +433,36 @@ int main(void) {
      * human to review, since this sandbox has no display of its own. */
     const char *screenshot_path = getenv("OUTPOST_SCREENSHOT_PATH");
 
+    /* --smoke-test: a scripted flythrough to several vantage points
+     * around the outpost, holding each long enough for physics/AI to
+     * run for real before capturing it - the final verification pass's
+     * primary tool, since there is no human here to walk around and
+     * look. Overrides normal player input entirely while active
+     * (camera and the CharacterController's own position are both
+     * driven from the script, kept in sync exactly like noclip is). */
+    const char *smoke_test_dir = getenv("OUTPOST_SMOKE_TEST_DIR");
+    uint32_t    smoke_test_index = 0;
+    uint32_t    smoke_test_frames_at_waypoint = 0;
+#define SMOKE_TEST_HOLD_FRAMES 15u
+    const SmokeTestWaypoint smoke_test_waypoints[] = {
+        {"01_checkpoint_approach", {0.0f, 1.75f, -32.0f}, glm_rad(90.0f), 0.0f},
+        /* Elevated, looking back north into the compound with a
+         * downward pitch (positive pitch looks up - see camera.h) -
+         * the whole point of standing on the platform. */
+        {"02_watchtower_vantage", {0.0f, 6.15f, -16.0f}, glm_rad(90.0f), glm_rad(-25.0f)},
+        {"03_command_building", {-8.0f, 1.75f, 16.0f}, glm_rad(-90.0f), 0.0f},
+        {"04_supply_shed", {8.0f, 1.75f, 14.0f}, glm_rad(-90.0f), 0.0f},
+        /* x=18, not the 12-16 range the east-perimeter soldier
+         * patrols (see ai_soldier.c) - the original x=16 placed the
+         * camera inside that soldier's own collision box. */
+        {"05_east_perimeter", {18.0f, 1.75f, 0.0f}, glm_rad(90.0f), 0.0f},
+    };
+    const uint32_t smoke_test_waypoint_count = sizeof(smoke_test_waypoints) / sizeof(smoke_test_waypoints[0]);
+    if (smoke_test_dir != nullptr) {
+        LOG_INFO(OUTPOST_LOG_CATEGORY, "--smoke-test: %u waypoints, output to %s", smoke_test_waypoint_count,
+                  smoke_test_dir);
+    }
+
     LOG_INFO(OUTPOST_LOG_CATEGORY, "Entering frame loop");
     while (!window_should_close(window)) {
         input_new_frame();
@@ -469,7 +509,20 @@ int main(void) {
          * something dynamic does exist. */
         physics_world_step(physics_world, delta_seconds);
         ai_soldier_squad_update(&soldier_squad, delta_seconds);
-        player_update(&player, delta_seconds);
+        if (smoke_test_dir != nullptr && smoke_test_index < smoke_test_waypoint_count) {
+            const SmokeTestWaypoint *waypoint = &smoke_test_waypoints[smoke_test_index];
+            player.camera.position[0] = waypoint->position[0];
+            player.camera.position[1] = waypoint->position[1];
+            player.camera.position[2] = waypoint->position[2];
+            player.camera.yaw_radians = waypoint->yaw_radians;
+            player.camera.pitch_radians = waypoint->pitch_radians;
+            vec3 controller_position = {waypoint->position[0],
+                                         waypoint->position[1] - player.eye_height_offset,
+                                         waypoint->position[2]};
+            character_controller_set_position(player.controller, controller_position);
+        } else {
+            player_update(&player, delta_seconds);
+        }
         g_frame_stats = (RendererStats){0};
 
         {
@@ -572,6 +625,24 @@ int main(void) {
 
         if (screenshot_path != nullptr) {
             screenshot_capture(width, height, screenshot_path);
+        }
+
+        if (smoke_test_dir != nullptr) {
+            if (smoke_test_index < smoke_test_waypoint_count) {
+                smoke_test_frames_at_waypoint += 1;
+                if (smoke_test_frames_at_waypoint >= SMOKE_TEST_HOLD_FRAMES) {
+                    char path[512];
+                    snprintf(path, sizeof(path), "%s/%s.png", smoke_test_dir,
+                             smoke_test_waypoints[smoke_test_index].label);
+                    screenshot_capture(width, height, path);
+                    LOG_INFO(OUTPOST_LOG_CATEGORY, "--smoke-test: captured %s",
+                              smoke_test_waypoints[smoke_test_index].label);
+                    smoke_test_index += 1;
+                    smoke_test_frames_at_waypoint = 0;
+                }
+            } else {
+                window_request_close(window);
+            }
         }
 
         audio_engine_update(audio);
