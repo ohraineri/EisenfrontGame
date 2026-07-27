@@ -4,6 +4,8 @@
  *
  * Phase 2: FPS freecam (no collision yet), a textured ground plane and
  * one lit reference cube, one directional sun light, distance fog.
+ * Phase 3: procedural sky dome, single-light shadow mapping, and an
+ * HDR bloom/tonemap/gamma postprocess pass wrapping the whole frame.
  *
  * Renderer/Material integration note (discovered building this phase,
  * not assumed going in): renderer_end_frame() defers every queued
@@ -22,13 +24,16 @@
  * instance buffer; see lit.vert's own file header comment.
  */
 #include "eisenfront/core.h"
+#include "eisenfront/framebuffer.h"
 #include "eisenfront/graphics_context.h"
 #include "eisenfront/input.h"
 #include "eisenfront/lighting.h"
 #include "eisenfront/material.h"
 #include "eisenfront/mesh.h"
+#include "eisenfront/postprocess.h"
 #include "eisenfront/renderer.h"
 #include "eisenfront/shader.h"
+#include "eisenfront/shadow.h"
 #include "eisenfront/texture.h"
 #include "eisenfront/window.h"
 
@@ -73,17 +78,22 @@ typedef struct DrawableGroup {
  * is what keeps each group's material/uniform state correct at the
  * moment its draw actually executes inside renderer_end_frame(). */
 static void draw_group(Renderer *renderer, const DrawableGroup *group, mat4 view, mat4 proj,
+                        mat4 light_space_matrix, uint32_t shadow_depth_texture,
                         vec3 camera_position) {
     renderer_begin_frame(renderer);
 
     material_bind(group->material);
     shader_set_uniform_mat4(group->shader, "uView", (const float *)view);
     shader_set_uniform_mat4(group->shader, "uProj", (const float *)proj);
+    shader_set_uniform_mat4(group->shader, "uLightSpaceMatrix", (const float *)light_space_matrix);
     shader_set_uniform_3f(group->shader, "uCameraPos", camera_position[0], camera_position[1],
                             camera_position[2]);
     shader_set_uniform_3f(group->shader, "uFogColor", OUTPOST_SKY_HORIZON_COLOR[0],
                             OUTPOST_SKY_HORIZON_COLOR[1], OUTPOST_SKY_HORIZON_COLOR[2]);
     shader_set_uniform_1f(group->shader, "uFogDensity", OUTPOST_FOG_DENSITY);
+    /* Not one of Material's own six slots - bound directly, matching
+     * lit.frag's explicit `layout(binding = 6)`. */
+    glBindTextureUnit(6, shadow_depth_texture);
 
     const RenderCommand command = {
         .vertex_array = mesh_get_vertex_array_handle(group->mesh),
@@ -260,6 +270,20 @@ int main(void) {
     lighting_set_directional(lighting, &sun);
     lighting_upload(lighting);
 
+    ShadowMap *shadow_map = nullptr;
+    shadow_map_create(2048u, &shadow_map);
+    shadow_map_set_light(shadow_map, sun_direction, (vec3){0.0f, 0.0f, 0.0f}, 40.0f);
+
+    /* Fixed to the window's initial size; resizing the window does not
+     * currently recreate this at the new resolution (a known
+     * limitation, not core to what this phase is proving). */
+    PostProcessDesc postprocess_desc =
+        postprocess_desc_default((uint32_t)window_desc.width, (uint32_t)window_desc.height);
+    postprocess_desc.enable_bloom = true;
+    postprocess_desc.exposure = 1.1f;
+    PostProcess *postprocess = nullptr;
+    postprocess_create(&postprocess_desc, &postprocess);
+
     vec3 sky_horizon_color = {OUTPOST_SKY_HORIZON_COLOR[0], OUTPOST_SKY_HORIZON_COLOR[1],
                                OUTPOST_SKY_HORIZON_COLOR[2]};
     vec3 sky_zenith_color = {0.35f, 0.42f, 0.52f};
@@ -318,6 +342,19 @@ int main(void) {
         camera_get_view_matrix(&player.camera, view);
         camera_get_projection_matrix(&player.camera, proj);
 
+        mat4 light_space_matrix;
+        shadow_map_get_light_space_matrix(shadow_map, light_space_matrix);
+
+        mat4 identity_model;
+        glm_mat4_identity(identity_model);
+        shadow_map_begin(shadow_map);
+        shadow_map_draw(shadow_map, identity_model, mesh_get_vertex_array_handle(cube_mesh),
+                         mesh_get_vertex_count(cube_mesh), mesh_get_index_count(cube_mesh));
+        /* Binds the HDR scene framebuffer postprocess_resolve_and_apply()
+         * later reads from - replaces the plain framebuffer_bind_default()
+         * a shadow-only frame would use. */
+        postprocess_begin_scene(postprocess);
+
         lighting_bind(lighting);
 
         renderer_begin_frame(renderer);
@@ -334,11 +371,17 @@ int main(void) {
         renderer_clear(renderer, &clear);
         renderer_end_frame(renderer);
 
-        draw_group(renderer, &ground_group, view, proj, player.camera.position);
-        draw_group(renderer, &cube_group, view, proj, player.camera.position);
+        const uint32_t shadow_depth_texture = shadow_map_get_depth_texture(shadow_map);
+        draw_group(renderer, &ground_group, view, proj, light_space_matrix, shadow_depth_texture,
+                   player.camera.position);
+        draw_group(renderer, &cube_group, view, proj, light_space_matrix, shadow_depth_texture,
+                   player.camera.position);
         /* Sky must draw last - see sky.vert's file header comment on
          * the depth trick this relies on. */
         sky_draw(renderer, &sky, view, proj);
+
+        framebuffer_bind_default((uint32_t)width, (uint32_t)height);
+        postprocess_resolve_and_apply(postprocess, (uint32_t)width, (uint32_t)height);
 
         if (screenshot_path != nullptr) {
             screenshot_capture(width, height, screenshot_path);
@@ -356,6 +399,8 @@ int main(void) {
     LOG_INFO(OUTPOST_LOG_CATEGORY, "Shutting down");
 
     sky_destroy(&sky);
+    postprocess_destroy(postprocess);
+    shadow_map_destroy(shadow_map);
     lighting_environment_destroy(lighting);
     mesh_destroy(cube_mesh);
     mesh_destroy(ground_mesh);

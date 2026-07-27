@@ -3,6 +3,7 @@
 in vec3 vWorldPos;
 in vec3 vNormal;
 in vec2 vUV;
+in vec4 vLightSpacePos;
 
 out vec4 FragColor;
 
@@ -23,6 +24,9 @@ layout(std140, binding = 1) uniform MaterialParams {
  * bindings must be explicit (GLSL 4.2+), matching
  * MATERIAL_TEXTURE_UNIT_DIFFUSE (0) in material.h. */
 layout(binding = 0) uniform sampler2D uDiffuseMap;
+/* Not one of Material's own six slots (0-5, see material.h) - the
+ * shadow map is bound directly by Game code, not through Material. */
+layout(binding = 6) uniform sampler2D uShadowMap;
 
 struct PointLightGpu {
     vec4 position; /* xyz, radius in w */
@@ -52,6 +56,23 @@ uniform vec3  uCameraPos;
 uniform vec3  uFogColor;
 uniform float uFogDensity;
 
+/* 1.0 = fully in shadow, 0.0 = fully lit. A single hard tap with a
+ * fixed depth bias - no PCF/softening (shadow.h itself documents no
+ * cascades either; this matches that same "prove the pipeline, not a
+ * shadow-quality showcase" scope). */
+float shadow_amount(vec4 lightSpacePos) {
+    vec3 projected = lightSpacePos.xyz / lightSpacePos.w;
+    projected = projected * 0.5 + 0.5;
+    if (projected.z > 1.0 || projected.x < 0.0 || projected.x > 1.0 || projected.y < 0.0 ||
+        projected.y > 1.0) {
+        return 0.0;
+    }
+    float closestDepth = texture(uShadowMap, projected.xy).r;
+    float currentDepth = projected.z;
+    float bias = 0.003;
+    return (currentDepth - bias > closestDepth) ? 1.0 : 0.0;
+}
+
 void main() {
     vec3 normal = normalize(vNormal);
     vec3 albedo = uBaseColor.rgb * texture(uDiffuseMap, vUV).rgb;
@@ -72,7 +93,8 @@ void main() {
         vec3        lightDir = normalize(-uDirDirection.xyz);
         float       ndotl = max(dot(normal, lightDir), 0.0);
         vec3        radiance = uDirColor.rgb * uDirColor.a;
-        lit += albedo * radiance * ndotl * (1.0 - uAoStrength * 0.0);
+        float       shadow = shadow_amount(vLightSpacePos);
+        lit += albedo * radiance * ndotl * (1.0 - shadow) * (1.0 - uAoStrength * 0.0);
     }
     for (int i = 0; i < uPointLightCount; ++i) {
         vec3  toLight = uPointLights[i].position.xyz - vWorldPos;

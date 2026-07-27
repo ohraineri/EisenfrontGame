@@ -19,14 +19,17 @@ layout(location = 3) in vec2 aUV;
 
 uniform mat4 uView;
 uniform mat4 uProj;
+uniform mat4 uLightSpaceMatrix;
 
 out vec3 vWorldPos;
 out vec3 vNormal;
 out vec2 vUV;
+out vec4 vLightSpacePos;
 
 void main() {
     vWorldPos = aPosition;
     vNormal = aNormal;
     vUV = aUV;
+    vLightSpacePos = uLightSpaceMatrix * vec4(aPosition, 1.0);
     gl_Position = uProj * uView * vec4(aPosition, 1.0);
 }
