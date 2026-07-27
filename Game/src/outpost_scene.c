@@ -7,6 +7,7 @@ typedef struct PendingObject {
     vec3        half_extents;
     Material   *material;
     float       uv_scale;
+    SurfaceType surface_type;
 } PendingObject;
 
 typedef struct BuildContext {
@@ -28,7 +29,7 @@ static SceneNodeId add_group(BuildContext *ctx, SceneNodeId parent, vec3 local_p
 }
 
 static void add_box(BuildContext *ctx, SceneNodeId parent, vec3 local_position, vec3 half_extents,
-                     Material *material, float uv_scale) {
+                     Material *material, float uv_scale, SurfaceType surface_type) {
     if (ctx->pending_count >= OUTPOST_MAX_STATIC_OBJECTS) {
         return;
     }
@@ -47,6 +48,7 @@ static void add_box(BuildContext *ctx, SceneNodeId parent, vec3 local_position, 
     pending->half_extents[2] = half_extents[2];
     pending->material = material;
     pending->uv_scale = uv_scale;
+    pending->surface_type = surface_type;
 }
 
 /* HESCO-style perimeter barrier segments along a straight line from
@@ -57,7 +59,7 @@ static void add_box(BuildContext *ctx, SceneNodeId parent, vec3 local_position, 
  * Z (east/west walls). */
 static void add_barrier_line(BuildContext *ctx, SceneNodeId parent, vec3 start, vec3 end,
                               float spacing, float gap_center, float gap_half, bool long_axis_x,
-                              Material *barrier_material) {
+                              Material *barrier_material, SurfaceType surface_type) {
     const float dx = end[0] - start[0];
     const float dz = end[2] - start[2];
     const float length = long_axis_x ? dx : dz;
@@ -81,7 +83,8 @@ static void add_barrier_line(BuildContext *ctx, SceneNodeId parent, vec3 start, 
         if (along > gap_center - gap_half && along < gap_center + gap_half) {
             continue;
         }
-        add_box(ctx, parent, (vec3){x, half_extents[1], z}, half_extents, barrier_material, 0.6f);
+        add_box(ctx, parent, (vec3){x, half_extents[1], z}, half_extents, barrier_material, 0.6f,
+                surface_type);
     }
 }
 
@@ -99,13 +102,15 @@ static void add_watchtower(BuildContext *ctx, SceneNodeId parent, vec3 base_posi
     for (int i = 0; i < 4; ++i) {
         vec3 leg_position = {base_position[0] + leg_offsets[i][0], leg_offsets[i][1],
                               base_position[2] + leg_offsets[i][2]};
-        add_box(ctx, parent, leg_position, leg_half_extents, watchtower_material, 1.0f);
+        add_box(ctx, parent, leg_position, leg_half_extents, watchtower_material, 1.0f,
+                SURFACE_TYPE_WOOD);
     }
 
     vec3 platform_half_extents = {2.0f, 0.15f, 2.0f};
     vec3 platform_position = {base_position[0], leg_half_height * 2.0f + platform_half_extents[1],
                                base_position[2]};
-    add_box(ctx, parent, platform_position, platform_half_extents, watchtower_material, 1.0f);
+    add_box(ctx, parent, platform_position, platform_half_extents, watchtower_material, 1.0f,
+            SURFACE_TYPE_WOOD);
 }
 
 Result outpost_level_create(ShaderProgram *lit_shader, PhysicsWorld *physics_world,
@@ -173,13 +178,17 @@ Result outpost_level_create(ShaderProgram *lit_shader, PhysicsWorld *physics_wor
     const SceneNodeId perimeter_group = add_group(&ctx, root, (vec3){0.0f, 0.0f, 0.0f});
     const float        half_size = 20.0f;
     add_barrier_line(&ctx, perimeter_group, (vec3){-half_size, 0.0f, half_size},
-                      (vec3){half_size, 0.0f, half_size}, 2.2f, 0.0f, 0.0f, true, barrier_material);
+                      (vec3){half_size, 0.0f, half_size}, 2.2f, 0.0f, 0.0f, true, barrier_material,
+                      SURFACE_TYPE_GRAVEL);
     add_barrier_line(&ctx, perimeter_group, (vec3){-half_size, 0.0f, -half_size},
-                      (vec3){half_size, 0.0f, -half_size}, 2.2f, 0.0f, 3.0f, true, barrier_material);
+                      (vec3){half_size, 0.0f, -half_size}, 2.2f, 0.0f, 3.0f, true, barrier_material,
+                      SURFACE_TYPE_GRAVEL);
     add_barrier_line(&ctx, perimeter_group, (vec3){half_size, 0.0f, -half_size},
-                      (vec3){half_size, 0.0f, half_size}, 2.2f, 0.0f, 0.0f, false, barrier_material);
+                      (vec3){half_size, 0.0f, half_size}, 2.2f, 0.0f, 0.0f, false, barrier_material,
+                      SURFACE_TYPE_GRAVEL);
     add_barrier_line(&ctx, perimeter_group, (vec3){-half_size, 0.0f, -half_size},
-                      (vec3){-half_size, 0.0f, half_size}, 2.2f, 0.0f, 0.0f, false, barrier_material);
+                      (vec3){-half_size, 0.0f, half_size}, 2.2f, 0.0f, 0.0f, false, barrier_material,
+                      SURFACE_TYPE_GRAVEL);
 
     /* Watchtower just inside the entrance, covering the southern
      * approach - the whole reason a checkpoint has one. */
@@ -190,9 +199,9 @@ Result outpost_level_create(ShaderProgram *lit_shader, PhysicsWorld *physics_wor
      * moving structures_group would move both buildings together. */
     const SceneNodeId structures_group = add_group(&ctx, root, (vec3){0.0f, 0.0f, 10.0f});
     add_box(&ctx, structures_group, (vec3){-8.0f, 2.0f, -2.0f}, (vec3){4.0f, 2.0f, 3.0f},
-            building_material, 0.4f);
+            building_material, 0.4f, SURFACE_TYPE_CONCRETE);
     add_box(&ctx, structures_group, (vec3){8.0f, 1.5f, -4.0f}, (vec3){2.5f, 1.5f, 2.5f}, shed_material,
-            0.4f);
+            0.4f, SURFACE_TYPE_METAL);
 
     /* Scattered props for detail: crates by the shed, sandbag piles
      * near the checkpoint, barrels near the command building. */
@@ -200,16 +209,18 @@ Result outpost_level_create(ShaderProgram *lit_shader, PhysicsWorld *physics_wor
     vec3 crate_positions[4] = {
         {11.5f, 0.4f, 6.5f}, {12.3f, 0.4f, 5.2f}, {10.8f, 0.4f, 4.0f}, {12.0f, 1.2f, 5.5f}};
     for (int i = 0; i < 4; ++i) {
-        add_box(&ctx, props_group, crate_positions[i], (vec3){0.4f, 0.4f, 0.4f}, prop_material, 1.0f);
+        add_box(&ctx, props_group, crate_positions[i], (vec3){0.4f, 0.4f, 0.4f}, prop_material, 1.0f,
+                SURFACE_TYPE_WOOD);
     }
     vec3 sandbag_positions[3] = {{-3.0f, 0.3f, -17.5f}, {3.0f, 0.3f, -17.5f}, {0.0f, 0.3f, -14.0f}};
     for (int i = 0; i < 3; ++i) {
         add_box(&ctx, props_group, sandbag_positions[i], (vec3){1.0f, 0.3f, 0.4f}, barrier_material,
-                0.8f);
+                0.8f, SURFACE_TYPE_SAND);
     }
     vec3 barrel_positions[3] = {{-11.0f, 0.5f, 9.0f}, {-10.2f, 0.5f, 10.5f}, {-12.0f, 0.5f, 7.5f}};
     for (int i = 0; i < 3; ++i) {
-        add_box(&ctx, props_group, barrel_positions[i], (vec3){0.3f, 0.5f, 0.3f}, prop_material, 1.0f);
+        add_box(&ctx, props_group, barrel_positions[i], (vec3){0.3f, 0.5f, 0.3f}, prop_material, 1.0f,
+                SURFACE_TYPE_METAL);
     }
 
     scene_update_transforms(ctx.scene);
@@ -247,9 +258,19 @@ Result outpost_level_create(ShaderProgram *lit_shader, PhysicsWorld *physics_wor
         object->mesh = mesh;
         object->material = pending->material;
         object->body = body;
+        object->surface_type = pending->surface_type;
     }
 
     return RESULT_OK;
+}
+
+SurfaceType outpost_level_surface_type_for_body(const OutpostLevel *level, BodyId body) {
+    for (uint32_t i = 0; i < level->object_count; ++i) {
+        if (level->objects[i].body == body) {
+            return level->objects[i].surface_type;
+        }
+    }
+    return SURFACE_TYPE_SOIL;
 }
 
 void outpost_level_destroy(OutpostLevel *level, PhysicsWorld *physics_world) {
