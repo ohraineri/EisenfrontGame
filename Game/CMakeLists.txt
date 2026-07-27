@@ -8,6 +8,7 @@ add_executable(outpost
     src/player.c
     src/primitives.c
     src/screenshot.c
+    src/sky.c
 )
 
 target_link_libraries(outpost PRIVATE
