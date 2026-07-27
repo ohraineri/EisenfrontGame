@@ -239,6 +239,37 @@ static void test_component_type_capacity_exceeded(void) {
     world_destroy(world);
 }
 
+/* Regression: a world sized to its exact entity count (max_entities=1,
+ * one entity actually created) must not miscount that entity's own
+ * component pool slot as already occupied - entity slot indices run
+ * 1..max_entities (0 reserved), so a pool sized max_entities exactly
+ * is one short of covering that top index; sparse must be sized
+ * max_entities+1. */
+static void test_add_component_at_exact_entity_capacity(void) {
+    WorldDesc desc = world_desc_default();
+    desc.max_entities = 1;
+    World *world = nullptr;
+    TEST_ASSERT_EQUAL(RESULT_OK, world_create(&desc, &world));
+
+    ComponentTypeId position_type;
+    TEST_ASSERT_EQUAL(RESULT_OK, world_register_component_type(world, sizeof(Position), &position_type));
+
+    Entity entity = ECS_INVALID_ENTITY;
+    TEST_ASSERT_EQUAL(RESULT_OK, entity_create(world, &entity));
+
+    const Position position = {1.0f, 2.0f, 3.0f};
+    TEST_ASSERT_EQUAL(RESULT_OK, ecs_add_component(world, entity, position_type, &position));
+    TEST_ASSERT_TRUE(ecs_has_component(world, entity, position_type));
+
+    const Position *stored = (const Position *)ecs_get_component(world, entity, position_type);
+    TEST_ASSERT_NOT_NULL(stored);
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, stored->x);
+    TEST_ASSERT_EQUAL_FLOAT(2.0f, stored->y);
+    TEST_ASSERT_EQUAL_FLOAT(3.0f, stored->z);
+
+    world_destroy(world);
+}
+
 int main(void) {
     UNITY_BEGIN();
 
@@ -250,6 +281,7 @@ int main(void) {
     RUN_TEST(test_query_visits_only_entities_with_all_components);
     RUN_TEST(test_systems_run_in_registration_order);
     RUN_TEST(test_component_type_capacity_exceeded);
+    RUN_TEST(test_add_component_at_exact_entity_capacity);
 
     return UNITY_END();
 }
