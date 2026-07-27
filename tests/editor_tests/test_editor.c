@@ -7,6 +7,8 @@
 
 #include "unity.h"
 
+#include <SDL3/SDL.h>
+
 static Window          *g_window;
 static GraphicsContext *g_context;
 
@@ -106,6 +108,30 @@ static void test_capture_flags_false_before_init(void) {
     TEST_ASSERT_FALSE(editor_wants_capture_keyboard());
 }
 
+/* editor_process_raw_event() is exposed specifically so a caller can
+ * chain it with another raw-event consumer (Input) into one combined
+ * WindowRawEventFn - see editor.h's file header comment. Both calls
+ * below must be safe: before editor_init() (no-ops, per the header
+ * comment) and after (forwarded to ImGui without crashing). */
+static void test_process_raw_event_safe_before_init(void) {
+    SDL_Event event = {0};
+    event.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.type = (Uint32)event.type;
+    editor_process_raw_event(&event, nullptr);
+}
+
+static void test_process_raw_event_forwarded_after_init(void) {
+    TEST_ASSERT_EQUAL(RESULT_OK, editor_init(g_window, g_context));
+    run_one_frame("Test Window");
+
+    SDL_Event event = {0};
+    event.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.type = (Uint32)event.type;
+    event.motion.x = 10.0f;
+    event.motion.y = 20.0f;
+    editor_process_raw_event(&event, nullptr);
+}
+
 int main(void) {
     UNITY_BEGIN();
 
@@ -116,6 +142,8 @@ int main(void) {
     RUN_TEST(test_frame_cycle_and_widget_calls);
     RUN_TEST(test_capture_flags_available_after_init);
     RUN_TEST(test_capture_flags_false_before_init);
+    RUN_TEST(test_process_raw_event_safe_before_init);
+    RUN_TEST(test_process_raw_event_forwarded_after_init);
 
     return UNITY_END();
 }

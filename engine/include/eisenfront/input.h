@@ -9,6 +9,11 @@
  * Dependencies: Core and Window. input_init() installs itself as
  * Window's process-wide raw event callback, so only one Input consumer
  * may exist per process, same as Window's one-callback-slot design.
+ * input_process_raw_event() is that same handler exposed directly, for
+ * an application that needs to chain it with another raw-event
+ * consumer of its own (e.g. the Editor module) into a single combined
+ * callback registered after both _init() calls - see editor.h's
+ * matching editor_process_raw_event().
  *
  * Frame contract: call, in this exact order, once per frame:
  *
@@ -35,6 +40,12 @@ ENGINE_API Result input_init(void);
 ENGINE_API void   input_shutdown(void);
 
 ENGINE_API void input_new_frame(void);
+
+/* Input's own WindowRawEventFn, exposed so it can be chained into a
+ * caller-owned combined callback - see the file header comment. Safe
+ * to call with userdata == nullptr (it ignores it, same as when Window
+ * calls it directly). */
+ENGINE_API void input_process_raw_event(void *native_event, void *userdata);
 
 /* ==================================================================== *
  * Keyboard

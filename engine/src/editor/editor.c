@@ -8,8 +8,11 @@
 
 static ImGuiContext *s_imgui_context = nullptr;
 
-static void forward_raw_event(void *native_event, void *userdata) {
+void editor_process_raw_event(void *native_event, void *userdata) {
     (void)userdata;
+    if (s_imgui_context == nullptr) {
+        return;
+    }
     ImGui_ImplSDL3_ProcessEvent((const SDL_Event *)native_event);
 }
 
@@ -46,7 +49,7 @@ Result editor_init(Window *window, GraphicsContext *context) {
         return RESULT_ERROR_MODULE_INIT_FAILED;
     }
 
-    window_set_raw_event_callback(forward_raw_event, nullptr);
+    window_set_raw_event_callback(editor_process_raw_event, nullptr);
 
     s_imgui_context = imgui_context;
     LOG_INFO(EDITOR_LOG_CATEGORY, "Editor initialized");

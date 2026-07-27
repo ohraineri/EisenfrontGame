@@ -163,6 +163,24 @@ static void test_gamepad_queries_are_safe_with_none_connected(void) {
     TEST_ASSERT_EQUAL(RESULT_ERROR_NOT_FOUND, input_gamepad_set_vibration(1, 1.0f, 1.0f, 100));
 }
 
+/* ---- input_process_raw_event() called directly, bypassing Window's
+ * own callback slot - the exact usage a caller chaining Input with
+ * another raw-event consumer (e.g. Editor) needs. ---- */
+
+static void test_process_raw_event_directly_updates_state(void) {
+    SDL_Event event = {0};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.type = (Uint32)event.type;
+    event.key.scancode = SDL_SCANCODE_A;
+    event.key.down = true;
+    event.key.repeat = false;
+
+    input_new_frame();
+    input_process_raw_event(&event, nullptr);
+    TEST_ASSERT_TRUE(input_key_pressed(KEY_A));
+    TEST_ASSERT_TRUE(input_key_held(KEY_A));
+}
+
 int main(void) {
     UNITY_BEGIN();
 
@@ -172,6 +190,7 @@ int main(void) {
     RUN_TEST(test_mouse_motion_updates_position_and_delta);
     RUN_TEST(test_mouse_scroll_accumulates_and_resets);
     RUN_TEST(test_gamepad_queries_are_safe_with_none_connected);
+    RUN_TEST(test_process_raw_event_directly_updates_state);
 
     return UNITY_END();
 }

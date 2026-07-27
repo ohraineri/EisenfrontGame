@@ -92,7 +92,7 @@ static float normalize_axis_value(Sint32 axis, Sint16 value) {
     return value < 0 ? (float)value / 32768.0f : (float)value / 32767.0f;
 }
 
-static void handle_raw_event(void *native_event, void *userdata) {
+void input_process_raw_event(void *native_event, void *userdata) {
     (void)userdata;
     const SDL_Event *event = native_event;
 
@@ -178,7 +178,7 @@ Result input_init(void) {
     g_scroll_dy_accum = 0.0f;
     memset(g_gamepads, 0, sizeof(g_gamepads));
 
-    window_set_raw_event_callback(handle_raw_event, nullptr);
+    window_set_raw_event_callback(input_process_raw_event, nullptr);
     g_initialized = true;
     return RESULT_OK;
 }

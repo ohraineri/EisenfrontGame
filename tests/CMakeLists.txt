@@ -23,7 +23,7 @@ add_test(NAME networking_tests COMMAND networking_tests)
 
 if(EISENFRONT_BUILD_EDITOR)
     add_executable(editor_tests editor_tests/test_editor.c)
-    target_link_libraries(editor_tests PRIVATE Eisenfront::Editor unity)
+    target_link_libraries(editor_tests PRIVATE Eisenfront::Editor SDL3::SDL3 unity)
     add_test(NAME editor_tests COMMAND editor_tests)
     set_tests_properties(editor_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
 endif()

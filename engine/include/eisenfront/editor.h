@@ -36,7 +36,14 @@
  *     registered at a time; a game that also needs raw SDL events
  *     while the Editor is active must be the one to chain the calls
  *     (there is no built-in multiplexing here, because Window itself
- *     does not support more than one registered raw-event callback).
+ *     does not support more than one registered raw-event callback) -
+ *     editor_process_raw_event() is Editor's own handler exposed
+ *     directly so a caller can do exactly that: call both _init()
+ *     functions, then register one small combined WindowRawEventFn
+ *     (after both, so it wins the slot) that calls
+ *     input_process_raw_event() and editor_process_raw_event() in
+ *     turn. Safe to call even when the Editor failed to initialize or
+ *     was never initialized - it no-ops until editor_init() succeeds.
  *   - No ImGui .ini layout persistence (IniFilename is disabled) - a
  *     debug overlay's window layout is not treated as state worth
  *     saving between runs by default.
@@ -56,6 +63,11 @@
 
 ENGINE_API Result editor_init(Window *window, GraphicsContext *context);
 ENGINE_API void   editor_shutdown(void);
+
+/* Editor's own WindowRawEventFn, exposed so it can be chained into a
+ * caller-owned combined callback - see the file header comment and
+ * input.h's matching input_process_raw_event(). */
+ENGINE_API void editor_process_raw_event(void *native_event, void *userdata);
 
 /* Pumps the SDL3 and OpenGL3 backends' per-frame state and starts a new
  * ImGui frame (igNewFrame()). Call once per frame, after
