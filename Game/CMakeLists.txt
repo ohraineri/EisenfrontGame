@@ -5,6 +5,7 @@
 add_executable(outpost
     src/main.c
     src/ground_texture.c
+    src/outpost_scene.c
     src/player.c
     src/primitives.c
     src/screenshot.c

@@ -6,6 +6,10 @@
  * one lit reference cube, one directional sun light, distance fog.
  * Phase 3: procedural sky dome, single-light shadow mapping, and an
  * HDR bloom/tonemap/gamma postprocess pass wrapping the whole frame.
+ * Phase 4: the outpost itself (outpost_scene.c) - perimeter barriers,
+ * a watchtower, two structures and scattered props, built through
+ * Scene's node hierarchy with matching static Physics bodies. The
+ * Phase 2 reference cube is gone, superseded by real content.
  *
  * Renderer/Material integration note (discovered building this phase,
  * not assumed going in): renderer_end_frame() defers every queued
@@ -30,6 +34,7 @@
 #include "eisenfront/lighting.h"
 #include "eisenfront/material.h"
 #include "eisenfront/mesh.h"
+#include "eisenfront/physics.h"
 #include "eisenfront/postprocess.h"
 #include "eisenfront/renderer.h"
 #include "eisenfront/shader.h"
@@ -40,6 +45,7 @@
 #include "eisenfront/audio.h"
 
 #include "ground_texture.h"
+#include "outpost_scene.h"
 #include "player.h"
 #include "primitives.h"
 #include "screenshot.h"
@@ -240,23 +246,28 @@ int main(void) {
     Material *ground_material = nullptr;
     material_create(&ground_material_desc, &ground_material);
 
-    MaterialParams cube_params = material_params_default();
-    cube_params.base_color[0] = 0.5f;
-    cube_params.base_color[1] = 0.5f;
-    cube_params.base_color[2] = 0.52f;
-    const MaterialDesc cube_material_desc = {
-        .shader = lit_shader,
-        .textures = {0},
-        .params = cube_params,
-    };
-    Material *cube_material = nullptr;
-    material_create(&cube_material_desc, &cube_material);
-
     Mesh *ground_mesh = nullptr;
     primitive_create_ground_plane((vec3){0.0f, 0.0f, 0.0f}, 100.0f, 100.0f, 0.25f, &ground_mesh);
 
-    Mesh *cube_mesh = nullptr;
-    primitive_create_box((vec3){6.0f, 1.0f, 0.0f}, (vec3){1.0f, 1.0f, 1.0f}, 1.0f, &cube_mesh);
+    PhysicsWorldDesc physics_world_desc = physics_world_desc_default();
+    physics_world_desc.max_bodies = 256u;
+    PhysicsWorld *physics_world = nullptr;
+    physics_world_create(&physics_world_desc, &physics_world);
+
+    /* Ground itself is a static body too, matching the visual plane -
+     * everything in the outpost needs something solid underfoot. */
+    RigidBodyDesc ground_body_desc = rigid_body_desc_default();
+    ground_body_desc.type = BODY_TYPE_STATIC;
+    ground_body_desc.shape = shape_box((vec3){100.0f, 0.5f, 100.0f});
+    ground_body_desc.position[1] = -0.5f;
+    BodyId ground_body = PHYSICS_INVALID_BODY_ID;
+    rigid_body_create(physics_world, &ground_body_desc, &ground_body);
+
+    OutpostLevel outpost_level = {0};
+    if (outpost_level_create(lit_shader, physics_world, &outpost_level) != RESULT_OK) {
+        LOG_ERROR(OUTPOST_LOG_CATEGORY, "failed to build the outpost level");
+        return 1;
+    }
 
     LightingEnvironment *lighting = nullptr;
     lighting_environment_create(&lighting);
@@ -272,7 +283,7 @@ int main(void) {
 
     ShadowMap *shadow_map = nullptr;
     shadow_map_create(2048u, &shadow_map);
-    shadow_map_set_light(shadow_map, sun_direction, (vec3){0.0f, 0.0f, 0.0f}, 40.0f);
+    shadow_map_set_light(shadow_map, sun_direction, (vec3){0.0f, 0.0f, -3.0f}, 35.0f);
 
     /* Fixed to the window's initial size; resizing the window does not
      * currently recreate this at the new resolution (a known
@@ -295,10 +306,14 @@ int main(void) {
         return 1;
     }
 
-    Player player = player_create((vec3){0.0f, 1.75f, 0.0f}, (float)window_desc.width / (float)window_desc.height);
+    /* Spawn south of the checkpoint, facing north through the entrance
+     * gap toward the watchtower and the compound beyond - the natural
+     * first approach to a defended position, not dropped inside it. */
+    Player player = player_create((vec3){0.0f, 1.75f, -32.0f},
+                                   (float)window_desc.width / (float)window_desc.height);
+    player.camera.yaw_radians = glm_rad(90.0f);
 
     const DrawableGroup ground_group = {.shader = lit_shader, .material = ground_material, .mesh = ground_mesh};
-    const DrawableGroup cube_group = {.shader = lit_shader, .material = cube_material, .mesh = cube_mesh};
 
     FrameClock clock;
     frame_clock_init(&clock);
@@ -348,8 +363,11 @@ int main(void) {
         mat4 identity_model;
         glm_mat4_identity(identity_model);
         shadow_map_begin(shadow_map);
-        shadow_map_draw(shadow_map, identity_model, mesh_get_vertex_array_handle(cube_mesh),
-                         mesh_get_vertex_count(cube_mesh), mesh_get_index_count(cube_mesh));
+        for (uint32_t i = 0; i < outpost_level.object_count; ++i) {
+            const StaticObject *object = &outpost_level.objects[i];
+            shadow_map_draw(shadow_map, identity_model, mesh_get_vertex_array_handle(object->mesh),
+                             mesh_get_vertex_count(object->mesh), mesh_get_index_count(object->mesh));
+        }
         /* Binds the HDR scene framebuffer postprocess_resolve_and_apply()
          * later reads from - replaces the plain framebuffer_bind_default()
          * a shadow-only frame would use. */
@@ -374,8 +392,13 @@ int main(void) {
         const uint32_t shadow_depth_texture = shadow_map_get_depth_texture(shadow_map);
         draw_group(renderer, &ground_group, view, proj, light_space_matrix, shadow_depth_texture,
                    player.camera.position);
-        draw_group(renderer, &cube_group, view, proj, light_space_matrix, shadow_depth_texture,
-                   player.camera.position);
+        for (uint32_t i = 0; i < outpost_level.object_count; ++i) {
+            const StaticObject *object = &outpost_level.objects[i];
+            const DrawableGroup group = {
+                .shader = lit_shader, .material = object->material, .mesh = object->mesh};
+            draw_group(renderer, &group, view, proj, light_space_matrix, shadow_depth_texture,
+                       player.camera.position);
+        }
         /* Sky must draw last - see sky.vert's file header comment on
          * the depth trick this relies on. */
         sky_draw(renderer, &sky, view, proj);
@@ -402,9 +425,10 @@ int main(void) {
     postprocess_destroy(postprocess);
     shadow_map_destroy(shadow_map);
     lighting_environment_destroy(lighting);
-    mesh_destroy(cube_mesh);
+    outpost_level_destroy(&outpost_level, physics_world);
+    rigid_body_destroy(physics_world, ground_body);
+    physics_world_destroy(physics_world);
     mesh_destroy(ground_mesh);
-    material_release(cube_material);
     material_release(ground_material);
     texture_release(ground_diffuse);
     shader_program_release(lit_shader);
