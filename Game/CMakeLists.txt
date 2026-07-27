@@ -4,6 +4,10 @@
 # file stays an accurate map of what the slice actually touches.
 add_executable(outpost
     src/main.c
+    src/ground_texture.c
+    src/player.c
+    src/primitives.c
+    src/screenshot.c
 )
 
 target_link_libraries(outpost PRIVATE
@@ -24,6 +28,7 @@ target_link_libraries(outpost PRIVATE
     Eisenfront::Physics
     Eisenfront::Audio
     Eisenfront::StbImage
+    Eisenfront::StbImageWrite
 )
 
 target_compile_features(outpost PRIVATE c_std_23)
