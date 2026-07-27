@@ -1,5 +1,12 @@
 #include "primitives.h"
 
+#include <math.h>
+#include <stdlib.h>
+
+/* Not relying on M_PI: it's a POSIX/BSD extension, not ISO C, and this
+ * project builds with -std=c23 and no GNU extensions. */
+#define OUTPOST_PI 3.14159265358979323846f
+
 static Vertex make_vertex(vec3 position, vec3 normal, vec3 tangent, float u, float v) {
     Vertex vertex = {0};
     vertex.position[0] = position[0];
@@ -128,4 +135,82 @@ Result primitive_create_ground_plane(vec3 center, float half_width, float half_d
         .dynamic = false,
     };
     return mesh_create(&desc, out_mesh);
+}
+
+Result primitive_create_sky_dome(float radius, uint32_t rings, uint32_t segments, Mesh **out_mesh) {
+    if (out_mesh == nullptr || rings < 2 || segments < 3) {
+        return RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    const uint32_t vertex_count = (rings + 1) * (segments + 1);
+    const uint32_t index_count = rings * segments * 6;
+
+    Vertex   *vertices = malloc(sizeof(Vertex) * vertex_count);
+    uint32_t *indices = malloc(sizeof(uint32_t) * index_count);
+    if (vertices == nullptr || indices == nullptr) {
+        free(vertices);
+        free(indices);
+        return RESULT_ERROR_OUT_OF_MEMORY;
+    }
+
+    uint32_t vertex_index = 0;
+    for (uint32_t ring = 0; ring <= rings; ++ring) {
+        /* theta: 0 at the south pole, PI at the north pole. */
+        const float theta = (float)ring / (float)rings * OUTPOST_PI;
+        const float sin_theta = sinf(theta);
+        const float cos_theta = cosf(theta);
+
+        for (uint32_t segment = 0; segment <= segments; ++segment) {
+            const float phi = (float)segment / (float)segments * 2.0f * OUTPOST_PI;
+            const float sin_phi = sinf(phi);
+            const float cos_phi = cosf(phi);
+
+            vec3 position = {
+                radius * sin_theta * cos_phi,
+                radius * cos_theta,
+                radius * sin_theta * sin_phi,
+            };
+            /* Inward-facing normal - the camera always sits inside
+             * this dome looking at its interior surface. */
+            vec3 normal = {-sin_theta * cos_phi, -cos_theta, -sin_theta * sin_phi};
+            vec3 tangent = {-sin_phi, 0.0f, cos_phi};
+            const float u = (float)segment / (float)segments;
+            const float v = (float)ring / (float)rings;
+
+            vertices[vertex_index++] = make_vertex(position, normal, tangent, u, v);
+        }
+    }
+
+    uint32_t index = 0;
+    const uint32_t row_stride = segments + 1;
+    for (uint32_t ring = 0; ring < rings; ++ring) {
+        for (uint32_t segment = 0; segment < segments; ++segment) {
+            const uint32_t a = ring * row_stride + segment;
+            const uint32_t b = a + row_stride;
+            const uint32_t c = a + 1;
+            const uint32_t d = b + 1;
+
+            /* Wound so the (inward-facing) normals match a
+             * front-face-from-the-inside winding: seen from inside the
+             * dome, this is counter-clockwise. */
+            indices[index++] = a;
+            indices[index++] = b;
+            indices[index++] = c;
+            indices[index++] = c;
+            indices[index++] = b;
+            indices[index++] = d;
+        }
+    }
+
+    const MeshDesc desc = {
+        .vertices = vertices,
+        .vertex_count = vertex_count,
+        .indices = indices,
+        .index_count = index_count,
+        .dynamic = false,
+    };
+    const Result result = mesh_create(&desc, out_mesh);
+    free(vertices);
+    free(indices);
+    return result;
 }
