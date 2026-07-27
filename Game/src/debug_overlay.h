@@ -12,7 +12,8 @@
 #include "eisenfront/physics.h"
 #include "eisenfront/renderer.h"
 
-#include "player.h"
+#include "camera_motion.h"
+#include "infantry_entity.h"
 
 typedef struct DebugOverlay {
     bool visible;
@@ -28,8 +29,9 @@ void debug_overlay_toggle(DebugOverlay *overlay);
  * teleports the player's CharacterController to the hit point). Call
  * between editor_new_frame() and editor_render(); always safe to call
  * even while hidden (does nothing but stay ready for the next F1). */
-void debug_overlay_draw(DebugOverlay *overlay, Renderer *renderer, Player *player,
+void debug_overlay_draw(DebugOverlay *overlay, Renderer *renderer, InfantryEntity *player,
                          PhysicsWorld *physics_world, const RendererStats *frame_stats,
-                         uint32_t static_object_count, uint32_t soldier_count);
+                         uint32_t static_object_count, uint32_t soldier_count,
+                         CameraMotionConfig *camera_motion_config);
 
 #endif /* OUTPOST_DEBUG_OVERLAY_H */
