@@ -17,7 +17,11 @@ typedef struct ComponentPool {
     size_t    component_size;
     uint8_t  *dense_data;     /* max_entities * component_size bytes, tightly packed [0, count) */
     Entity   *dense_entities; /* dense_entities[i] owns dense_data + i * component_size */
-    uint32_t *sparse;         /* indexed by entity slot index -> dense index, or ECS_SPARSE_NONE */
+    /* Indexed directly by entity slot index (1..max_entities, see
+     * world->entities' own +1 comment), not by dense position -
+     * max_entities+1 elements so slot index max_entities itself is
+     * in bounds, exactly like world->entities. */
+    uint32_t *sparse;
     uint32_t  count;
 } ComponentPool;
 
@@ -132,14 +136,14 @@ Result world_register_component_type(World *world, size_t component_size,
     pool->component_size = component_size;
     pool->dense_data = malloc(component_size * world->max_entities);
     pool->dense_entities = malloc(sizeof(Entity) * world->max_entities);
-    pool->sparse = malloc(sizeof(uint32_t) * world->max_entities);
+    pool->sparse = malloc(sizeof(uint32_t) * ((size_t)world->max_entities + 1));
     if (pool->dense_data == nullptr || pool->dense_entities == nullptr || pool->sparse == nullptr) {
         free(pool->dense_data);
         free(pool->dense_entities);
         free(pool->sparse);
         return RESULT_ERROR_OUT_OF_MEMORY;
     }
-    for (uint32_t i = 0; i < world->max_entities; ++i) {
+    for (uint32_t i = 0; i <= world->max_entities; ++i) {
         pool->sparse[i] = ECS_SPARSE_NONE;
     }
     pool->count = 0;
