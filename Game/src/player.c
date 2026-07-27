@@ -37,6 +37,7 @@ Result player_create(PhysicsWorld *world, vec3 start_position, float aspect_rati
     out_player->move_speed_units_per_sec = 5.0f;
     out_player->look_sensitivity_radians_per_pixel = 0.0025f;
     out_player->vertical_velocity = 0.0f;
+    out_player->noclip_enabled = false;
     return RESULT_OK;
 }
 
@@ -47,12 +48,7 @@ void player_destroy(Player *player) {
     character_controller_destroy(player->controller);
 }
 
-void player_update(Player *player, float delta_seconds) {
-    float dx = 0.0f, dy = 0.0f;
-    input_mouse_delta(&dx, &dy);
-    camera_rotate(&player->camera, dx * player->look_sensitivity_radians_per_pixel,
-                   -dy * player->look_sensitivity_radians_per_pixel);
-
+static void update_grounded(Player *player, float delta_seconds) {
     vec3 forward, right;
     camera_get_forward(&player->camera, forward);
     camera_get_right(&player->camera, right);
@@ -101,4 +97,57 @@ void player_update(Player *player, float delta_seconds) {
     player->camera.position[0] = resulting_position[0];
     player->camera.position[1] = resulting_position[1] + player->eye_height_offset;
     player->camera.position[2] = resulting_position[2];
+}
+
+static void update_noclip(Player *player, float delta_seconds) {
+    vec3 forward, right, up;
+    camera_get_forward(&player->camera, forward);
+    camera_get_right(&player->camera, right);
+    camera_get_up(&player->camera, up);
+
+    const float speed =
+        player->move_speed_units_per_sec * (input_key_held(KEY_LSHIFT) ? 3.0f : 1.0f) * delta_seconds;
+    vec3 move = {0.0f, 0.0f, 0.0f};
+    if (input_key_held(KEY_W)) {
+        glm_vec3_muladds(forward, speed, move);
+    }
+    if (input_key_held(KEY_S)) {
+        glm_vec3_muladds(forward, -speed, move);
+    }
+    if (input_key_held(KEY_D)) {
+        glm_vec3_muladds(right, speed, move);
+    }
+    if (input_key_held(KEY_A)) {
+        glm_vec3_muladds(right, -speed, move);
+    }
+    if (input_key_held(KEY_SPACE)) {
+        glm_vec3_muladds(up, speed, move);
+    }
+    if (input_key_held(KEY_LCTRL)) {
+        glm_vec3_muladds(up, -speed, move);
+    }
+
+    player->vertical_velocity = 0.0f; /* no gravity accumulation while flying */
+    glm_vec3_add(player->camera.position, move, player->camera.position);
+
+    /* Keeps the controller from drifting far from the camera, so
+     * toggling noclip back off resumes grounded movement from
+     * wherever the player actually flew to, not a stale position. */
+    vec3 controller_position = {player->camera.position[0],
+                                 player->camera.position[1] - player->eye_height_offset,
+                                 player->camera.position[2]};
+    character_controller_set_position(player->controller, controller_position);
+}
+
+void player_update(Player *player, float delta_seconds) {
+    float dx = 0.0f, dy = 0.0f;
+    input_mouse_delta(&dx, &dy);
+    camera_rotate(&player->camera, dx * player->look_sensitivity_radians_per_pixel,
+                   -dy * player->look_sensitivity_radians_per_pixel);
+
+    if (player->noclip_enabled) {
+        update_noclip(player, delta_seconds);
+    } else {
+        update_grounded(player, delta_seconds);
+    }
 }

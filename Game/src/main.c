@@ -23,6 +23,15 @@
  * plus spatial one-shot footsteps timed to the player's own horizontal
  * movement distance, from procedurally-synthesized placeholder .wav
  * files (see Tools/generate_audio.py).
+ * Phase 8: the Editor debug overlay (debug_overlay.c), F1-toggled -
+ * live RendererStats, object counts, a wireframe toggle, noclip, and
+ * teleport-to-cursor. This is also where the Input/Editor raw-event
+ * conflict flagged since Phase 1 actually gets resolved: both
+ * input_init() and editor_init() still claim Window's single raw-event
+ * slot internally, but now that input_process_raw_event() and
+ * editor_process_raw_event() are exposed directly (an engine-level
+ * fix), main() re-registers one small combined callback after both
+ * _init() calls, so neither one silently loses events to the other.
  *
  * Renderer/Material integration note (discovered building this phase,
  * not assumed going in): renderer_end_frame() defers every queued
@@ -66,16 +75,26 @@
 #include "screenshot.h"
 #include "sky.h"
 
+#ifdef OUTPOST_HAS_EDITOR
+#include "eisenfront/editor.h"
+
+#include "debug_overlay.h"
+#endif
+
 #include <math.h>
 #include <stdlib.h>
 
-/* Editor is not wired in yet - see Phase 8. Both input_init() and
- * editor_init() claim Window's single raw-event callback slot (there
- * is no built-in chaining - see window.h/editor.h), so bringing Editor
- * in here would silently break WASD/mouse-look the moment
- * editor_init() overwrites Input's registration. Phase 8 fixes this at
- * the engine level (a public "process one raw event" entry point on
- * both Input and Editor) rather than papering over it here. */
+#ifdef OUTPOST_HAS_EDITOR
+/* input_init() and editor_init() each claim Window's single raw-event
+ * slot for themselves (see window.h/editor.h) - whichever _init() runs
+ * last silently wins, breaking the other. Registered after both have
+ * initialized, this one callback forwards every event to both of their
+ * now-public handlers, so neither loses events to the other. */
+static void combined_raw_event_handler(void *native_event, void *userdata) {
+    input_process_raw_event(native_event, userdata);
+    editor_process_raw_event(native_event, userdata);
+}
+#endif
 
 #define OUTPOST_LOG_CATEGORY "outpost"
 
@@ -96,6 +115,21 @@ typedef struct DrawableGroup {
     Mesh          *mesh;
     mat4           model; /* identity for pre-baked-to-world-space static geometry */
 } DrawableGroup;
+
+/* Renderer's own renderer_get_stats() resets every renderer_begin_frame()
+ * call, but every draw in this slice gets its own immediate flush (see
+ * the file header comment) - many begin/end cycles per real frame, not
+ * one. This accumulates across all of them; reset once per real frame,
+ * read by the Phase 8 debug overlay. */
+static RendererStats g_frame_stats;
+
+static void accumulate_stats(Renderer *renderer) {
+    RendererStats stats;
+    renderer_get_stats(renderer, &stats);
+    g_frame_stats.draw_calls += stats.draw_calls;
+    g_frame_stats.triangles += stats.triangles;
+    g_frame_stats.state_changes += stats.state_changes;
+}
 
 /* See the file header comment: flushing immediately, once per group,
  * is what keeps each group's material/uniform state correct at the
@@ -131,6 +165,7 @@ static void draw_group(Renderer *renderer, const DrawableGroup *group, mat4 view
     };
     renderer_submit(renderer, &command);
     renderer_end_frame(renderer);
+    accumulate_stats(renderer);
 }
 
 int main(void) {
@@ -184,6 +219,22 @@ int main(void) {
      * Renderer needs a depth buffer), so it must be turned on here,
      * once, before anything with overlapping geometry is drawn. */
     glEnable(GL_DEPTH_TEST);
+
+#ifdef OUTPOST_HAS_EDITOR
+    const bool editor_active = editor_init(window, context) == RESULT_OK;
+    if (!editor_active) {
+        LOG_ERROR(OUTPOST_LOG_CATEGORY, "editor_init failed - continuing without the debug overlay");
+    }
+    /* Wins the raw-event slot back from whichever of input_init()/
+     * editor_init() registered last - see combined_raw_event_handler's
+     * own comment. */
+    window_set_raw_event_callback(combined_raw_event_handler, nullptr);
+    DebugOverlay debug_overlay = {0};
+    /* Verification-only hook, same spirit as OUTPOST_MAX_FRAMES: no F1
+     * keypress exists to press in a headless smoke test, so this lets
+     * one confirm the overlay actually renders. */
+    debug_overlay.visible = getenv("OUTPOST_FORCE_OVERLAY") != nullptr;
+#endif
 
     Renderer *renderer = nullptr;
     if (renderer_create(context, nullptr, &renderer) != RESULT_OK) {
@@ -376,10 +427,20 @@ int main(void) {
     while (!window_should_close(window)) {
         input_new_frame();
         window_poll_events();
+#ifdef OUTPOST_HAS_EDITOR
+        if (editor_active) {
+            editor_new_frame();
+        }
+#endif
 
         if (input_key_pressed(KEY_ESCAPE)) {
             window_request_close(window);
         }
+#ifdef OUTPOST_HAS_EDITOR
+        if (editor_active && input_key_pressed(KEY_F1)) {
+            debug_overlay_toggle(&debug_overlay);
+        }
+#endif
 
         frame_clock_tick(&clock);
         /* Clamped rather than raw wall-clock delta: a debugger pause, a
@@ -409,6 +470,7 @@ int main(void) {
         physics_world_step(physics_world, delta_seconds);
         ai_soldier_squad_update(&soldier_squad, delta_seconds);
         player_update(&player, delta_seconds);
+        g_frame_stats = (RendererStats){0};
 
         {
             const float dx = player.camera.position[0] - previous_player_position[0];
@@ -495,9 +557,18 @@ int main(void) {
         /* Sky must draw last - see sky.vert's file header comment on
          * the depth trick this relies on. */
         sky_draw(renderer, &sky, view, proj);
+        accumulate_stats(renderer);
 
         framebuffer_bind_default((uint32_t)width, (uint32_t)height);
         postprocess_resolve_and_apply(postprocess, (uint32_t)width, (uint32_t)height);
+
+#ifdef OUTPOST_HAS_EDITOR
+        if (editor_active) {
+            debug_overlay_draw(&debug_overlay, renderer, &player, physics_world, &g_frame_stats,
+                                outpost_level.object_count, soldier_squad.count);
+            editor_render();
+        }
+#endif
 
         if (screenshot_path != nullptr) {
             screenshot_capture(width, height, screenshot_path);
@@ -532,6 +603,11 @@ int main(void) {
     texture_system_shutdown();
     shader_system_shutdown();
     audio_engine_destroy(audio);
+#ifdef OUTPOST_HAS_EDITOR
+    if (editor_active) {
+        editor_shutdown();
+    }
+#endif
     renderer_destroy(renderer);
     graphics_context_destroy(context);
     window_destroy(window);

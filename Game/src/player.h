@@ -25,6 +25,13 @@ typedef struct Player {
     float                 look_sensitivity_radians_per_pixel;
     float                 vertical_velocity;
     float                 eye_height_offset; /* above the controller's capsule center */
+    /* Debug-overlay-only (Phase 8): flies through geometry ignoring
+     * collision entirely instead of colliding-and-sliding. The
+     * controller's own position is still kept in sync every frame (via
+     * character_controller_set_position()) so turning noclip back off
+     * doesn't snap the player back to wherever they last had real
+     * collision. */
+    bool                   noclip_enabled;
 } Player;
 
 /* start_position is where the capsule's CENTER spawns, not the eye -

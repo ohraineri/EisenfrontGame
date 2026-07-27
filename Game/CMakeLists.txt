@@ -46,6 +46,12 @@ target_compile_definitions(outpost PRIVATE
     OUTPOST_ASSETS_DIR="${CMAKE_SOURCE_DIR}/Assets"
 )
 
-# Eisenfront::Editor is linked starting in Phase 8, once the
-# Input/Editor raw-event-callback conflict (see main.c) is resolved at
-# the engine level - see the plan this vertical slice was built from.
+# Only in a build that actually has the Editor module (never Release -
+# see editor.h's file header comment). The Input/Editor raw-event
+# conflict flagged since Phase 1 is resolved in main.c via
+# input_process_raw_event()/editor_process_raw_event() chaining.
+if(EISENFRONT_BUILD_EDITOR)
+    target_sources(outpost PRIVATE src/debug_overlay.c)
+    target_link_libraries(outpost PRIVATE Eisenfront::Editor)
+    target_compile_definitions(outpost PRIVATE OUTPOST_HAS_EDITOR=1)
+endif()
