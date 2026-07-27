@@ -20,4 +20,10 @@ Result primitive_create_box(vec3 center, vec3 half_extents, float uv_scale, Mesh
 Result primitive_create_ground_plane(vec3 center, float half_width, float half_depth,
                                       float uv_scale, Mesh **out_mesh);
 
+/* A UV-sphere of the given radius, centered on the origin (not baked
+ * to a world position like everything else this file builds - see
+ * sky.vert's file header comment for why: the sky must always appear
+ * to surround the camera). */
+Result primitive_create_sky_dome(float radius, uint32_t rings, uint32_t segments, Mesh **out_mesh);
+
 #endif /* OUTPOST_PRIMITIVES_H */
