@@ -5,13 +5,18 @@
 add_executable(outpost
     src/main.c
     src/ai_soldier.c
+    src/camera_motion.c
     src/game_audio.c
     src/ground_texture.c
+    src/infantry_entity.c
+    src/infantry_input_command.c
     src/outpost_scene.c
-    src/player.c
+    src/player_movement.c
     src/primitives.c
     src/screenshot.c
+    src/sim_clock.c
     src/sky.c
+    src/surface_type.c
 )
 
 target_link_libraries(outpost PRIVATE
