@@ -22,12 +22,15 @@
 #include "eisenfront/scene.h"
 #include "eisenfront/shader.h"
 
+#include "surface_type.h"
+
 #define OUTPOST_MAX_STATIC_OBJECTS 96u
 
 typedef struct StaticObject {
-    Mesh     *mesh;
-    Material *material;
-    BodyId    body; /* static box body matching this object's visual bounds exactly */
+    Mesh       *mesh;
+    Material   *material;
+    BodyId      body;         /* static box body matching this object's visual bounds exactly */
+    SurfaceType surface_type;
 } StaticObject;
 
 typedef struct OutpostLevel {
@@ -48,5 +51,11 @@ typedef struct OutpostLevel {
 Result outpost_level_create(ShaderProgram *lit_shader, PhysicsWorld *physics_world,
                              OutpostLevel *out_level);
 void   outpost_level_destroy(OutpostLevel *level, PhysicsWorld *physics_world);
+
+/* Surface type of the tracked static object owning `body`, or
+ * SURFACE_TYPE_SOIL if no object in this level owns it - the fallback
+ * also covers the level's untracked ground plane (created separately by
+ * main.c, not part of objects[]) and a stray/no-hit body. */
+SurfaceType outpost_level_surface_type_for_body(const OutpostLevel *level, BodyId body);
 
 #endif /* OUTPOST_SCENE_LEVEL_H */
