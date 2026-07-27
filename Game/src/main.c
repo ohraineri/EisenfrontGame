@@ -19,6 +19,10 @@
  * loops, kept in sync with kinematic Physics bodies the player
  * collides against. First use of the per-object uModel path in
  * lit.vert (everything before this was pre-baked to world space).
+ * Phase 7: audio (game_audio.c) - looping non-spatial wind/ambience
+ * plus spatial one-shot footsteps timed to the player's own horizontal
+ * movement distance, from procedurally-synthesized placeholder .wav
+ * files (see Tools/generate_audio.py).
  *
  * Renderer/Material integration note (discovered building this phase,
  * not assumed going in): renderer_end_frame() defers every queued
@@ -54,6 +58,7 @@
 #include "eisenfront/audio.h"
 
 #include "ai_soldier.h"
+#include "game_audio.h"
 #include "ground_texture.h"
 #include "outpost_scene.h"
 #include "player.h"
@@ -61,6 +66,7 @@
 #include "screenshot.h"
 #include "sky.h"
 
+#include <math.h>
 #include <stdlib.h>
 
 /* Editor is not wired in yet - see Phase 8. Both input_init() and
@@ -287,6 +293,12 @@ int main(void) {
         return 1;
     }
 
+    GameAudio game_audio = {0};
+    if (game_audio_create(audio, OUTPOST_ASSETS_DIR, &game_audio) != RESULT_OK) {
+        LOG_ERROR(OUTPOST_LOG_CATEGORY, "failed to load game audio");
+        return 1;
+    }
+
     LightingEnvironment *lighting = nullptr;
     lighting_environment_create(&lighting);
     vec3 sun_direction = {-0.35f, -0.85f, -0.4f};
@@ -336,6 +348,8 @@ int main(void) {
         return 1;
     }
     player.camera.yaw_radians = glm_rad(90.0f);
+    vec3 previous_player_position = {player.camera.position[0], player.camera.position[1],
+                                      player.camera.position[2]};
 
     DrawableGroup ground_group = {.shader = lit_shader, .material = ground_material, .mesh = ground_mesh};
     glm_mat4_identity(ground_group.model);
@@ -395,6 +409,21 @@ int main(void) {
         physics_world_step(physics_world, delta_seconds);
         ai_soldier_squad_update(&soldier_squad, delta_seconds);
         player_update(&player, delta_seconds);
+
+        {
+            const float dx = player.camera.position[0] - previous_player_position[0];
+            const float dz = player.camera.position[2] - previous_player_position[2];
+            const float horizontal_distance_moved = sqrtf(dx * dx + dz * dz);
+            game_audio_update(audio, &game_audio, player.camera.position, horizontal_distance_moved);
+            previous_player_position[0] = player.camera.position[0];
+            previous_player_position[1] = player.camera.position[1];
+            previous_player_position[2] = player.camera.position[2];
+        }
+
+        vec3 camera_forward, camera_up;
+        camera_get_forward(&player.camera, camera_forward);
+        camera_get_up(&player.camera, camera_up);
+        audio_engine_set_listener(audio, player.camera.position, camera_forward, camera_up);
 
         int32_t width, height;
         window_get_size_in_pixels(window, &width, &height);
@@ -489,6 +518,7 @@ int main(void) {
     postprocess_destroy(postprocess);
     shadow_map_destroy(shadow_map);
     lighting_environment_destroy(lighting);
+    game_audio_destroy(audio, &game_audio);
     player_destroy(&player);
     ai_soldier_squad_destroy(&soldier_squad);
     outpost_level_destroy(&outpost_level, physics_world);

@@ -5,6 +5,7 @@
 add_executable(outpost
     src/main.c
     src/ai_soldier.c
+    src/game_audio.c
     src/ground_texture.c
     src/outpost_scene.c
     src/player.c
