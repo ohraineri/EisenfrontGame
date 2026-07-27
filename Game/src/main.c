@@ -38,6 +38,7 @@
 #include "player.h"
 #include "primitives.h"
 #include "screenshot.h"
+#include "sky.h"
 
 #include <stdlib.h>
 
@@ -140,6 +141,15 @@ int main(void) {
         window_shutdown();
         return 1;
     }
+
+    /* Neither GraphicsContext nor Renderer ever enable GL_DEPTH_TEST for
+     * the main scene pass - shadow.c only enables it for its own
+     * depth-only FBO, postprocess.c only assumes/restores whatever
+     * state it found. Depth testing is left as the application's
+     * responsibility (a reasonable division - not every use of
+     * Renderer needs a depth buffer), so it must be turned on here,
+     * once, before anything with overlapping geometry is drawn. */
+    glEnable(GL_DEPTH_TEST);
 
     Renderer *renderer = nullptr;
     if (renderer_create(context, nullptr, &renderer) != RESULT_OK) {
@@ -250,6 +260,17 @@ int main(void) {
     lighting_set_directional(lighting, &sun);
     lighting_upload(lighting);
 
+    vec3 sky_horizon_color = {OUTPOST_SKY_HORIZON_COLOR[0], OUTPOST_SKY_HORIZON_COLOR[1],
+                               OUTPOST_SKY_HORIZON_COLOR[2]};
+    vec3 sky_zenith_color = {0.35f, 0.42f, 0.52f};
+    vec3 sky_sun_color = {1.0f, 0.92f, 0.75f};
+    Sky  sky;
+    if (sky_create(OUTPOST_ASSETS_DIR, sky_horizon_color, sky_zenith_color, sun_direction, sky_sun_color,
+                   &sky) != RESULT_OK) {
+        LOG_ERROR(OUTPOST_LOG_CATEGORY, "failed to load sky shader");
+        return 1;
+    }
+
     Player player = player_create((vec3){0.0f, 1.75f, 0.0f}, (float)window_desc.width / (float)window_desc.height);
 
     const DrawableGroup ground_group = {.shader = lit_shader, .material = ground_material, .mesh = ground_mesh};
@@ -315,6 +336,9 @@ int main(void) {
 
         draw_group(renderer, &ground_group, view, proj, player.camera.position);
         draw_group(renderer, &cube_group, view, proj, player.camera.position);
+        /* Sky must draw last - see sky.vert's file header comment on
+         * the depth trick this relies on. */
+        sky_draw(renderer, &sky, view, proj);
 
         if (screenshot_path != nullptr) {
             screenshot_capture(width, height, screenshot_path);
@@ -331,6 +355,7 @@ int main(void) {
 
     LOG_INFO(OUTPOST_LOG_CATEGORY, "Shutting down");
 
+    sky_destroy(&sky);
     lighting_environment_destroy(lighting);
     mesh_destroy(cube_mesh);
     mesh_destroy(ground_mesh);
