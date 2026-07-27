@@ -199,9 +199,11 @@ ENGINE_API void   character_controller_destroy(CharacterController *controller);
 /* Attempts to move by desired_displacement, sliding along anything it
  * would otherwise penetrate rather than stopping dead; the resulting
  * position (which may differ from position + desired_displacement) is
- * written to out_position. */
+ * written to out_position. delta_time drives the grounded probe's
+ * hysteresis - see character_controller_is_grounded(). */
 ENGINE_API void character_controller_move(CharacterController *controller,
-                                           vec3 desired_displacement, vec3 out_position);
+                                           vec3 desired_displacement, float delta_time,
+                                           vec3 out_position);
 ENGINE_API void character_controller_get_position(const CharacterController *controller,
                                                     vec3 out_position);
 /* Teleports the controller directly - no collide-and-slide, no sweep
@@ -212,7 +214,39 @@ ENGINE_API void character_controller_get_position(const CharacterController *con
 ENGINE_API void character_controller_set_position(CharacterController *controller, vec3 position);
 /* True if a short downward probe from the capsule's bottom found
  * something within a small tolerance - call after
- * character_controller_move() for the current step's answer. */
+ * character_controller_move() for the current step's answer.
+ * Hysteresis: gaining contact takes effect the instant a probe hits,
+ * but losing it only takes effect after continuous misses exceed a
+ * small internal tolerance, so a brief gap or mesh seam in the floor
+ * doesn't flicker the grounded state every other tick. */
 ENGINE_API bool character_controller_is_grounded(const CharacterController *controller);
+/* Surface normal from the most recent grounded contact (or (0,1,0) if
+ * never grounded) - held across the same hysteresis window as
+ * character_controller_is_grounded(), so it doesn't need re-fetching
+ * every tick just because a single probe momentarily missed.
+ * Box bodies (this engine's only floor geometry today) are always
+ * world-axis-aligned - see this file's header comment - so a
+ * straight-down probe against one is reported as (0,1,0) directly;
+ * there is no per-face normal tracking because there is no way to
+ * construct a sloped/ramp box in this physics module yet. Sphere/
+ * capsule bodies get an exact computed normal. True inclined-surface
+ * support needs an oriented or ramp shape type added to Physics first
+ * - this query is the seam Game-side slope logic (Infantry Controller
+ * spec 14) is meant to consume once that exists. */
+ENGINE_API void character_controller_get_ground_normal(const CharacterController *controller,
+                                                         vec3 out_normal);
+
+/* Resizes the capsule, keeping its bottom contact point fixed - the
+ * center moves up when growing, down when shrinking - the natural
+ * behavior for a crouch/stand transition (Infantry Controller spec
+ * Part IX). Shrinking is always accepted (a smaller capsule can only
+ * reduce overlap, never create new penetration). Growing is checked
+ * against the world first at the new size; if it would overlap
+ * anything, nothing changes and false is returned so the caller stays
+ * in its current (smaller) size - the standard "blocked by a low
+ * ceiling" case. Only ever changes radius/half_height and position;
+ * never the layer or layer_mask. */
+ENGINE_API bool character_controller_resize(CharacterController *controller, float new_radius,
+                                             float new_half_height);
 
 #endif /* EISENFRONT_PHYSICS_H */
