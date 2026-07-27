@@ -763,6 +763,23 @@ bool physics_raycast(const PhysicsWorld *world, vec3 origin, vec3 direction, flo
  * Character controller
  * ==================================================================== */
 
+/* A single missed grounded probe doesn't immediately report ungrounded -
+ * see character_controller_is_grounded()'s doc comment. */
+#define CHARACTER_CONTROLLER_GROUNDED_HYSTERESIS_SECONDS 0.15f
+
+/* A capsule resting on a floor is, by definition, exactly tangent to
+ * it - growing (e.g. standing up) recomputes a new capsule anchored to
+ * that same contact point, so it lands back at that same exact
+ * boundary too. test_sphere_sphere()'s distance/radius-sum comparison
+ * is mathematically correct at exact tangency (>= is "not
+ * overlapping"), but reaching that comparison via
+ * closest_segment_to_aabb()'s iterative refinement accumulates enough
+ * float32 rounding that "exactly touching" can come out a hair on
+ * either side. A millimeter of slack - physically invisible, well
+ * below anything a real ceiling clearance check should care about -
+ * keeps a genuinely clear resize from being rejected by that noise. */
+#define CHARACTER_CONTROLLER_RESIZE_OVERLAP_EPSILON 0.001f
+
 struct CharacterController {
     PhysicsWorld  *world;
     float          radius;
@@ -771,6 +788,8 @@ struct CharacterController {
     CollisionLayer layer;
     CollisionLayer layer_mask;
     bool           grounded;
+    vec3           ground_normal;
+    float          ungrounded_seconds; /* time since the last probe hit; resets to 0 on every hit */
 };
 
 Result character_controller_create(PhysicsWorld *world, const CharacterControllerDesc *desc,
@@ -792,6 +811,10 @@ Result character_controller_create(PhysicsWorld *world, const CharacterControlle
     controller->layer = desc->layer;
     controller->layer_mask = desc->layer_mask;
     controller->grounded = false;
+    controller->ground_normal[0] = 0.0f;
+    controller->ground_normal[1] = 1.0f;
+    controller->ground_normal[2] = 0.0f;
+    controller->ungrounded_seconds = 0.0f;
 
     *out_controller = controller;
     return RESULT_OK;
@@ -844,22 +867,42 @@ static CollisionResult capsule_vs_body(vec3 capsule_pos, float radius, float hal
     return test_sphere_sphere(closest, radius, body_pos, other_radius);
 }
 
-void character_controller_move(CharacterController *controller, vec3 desired_displacement,
-                                vec3 out_position) {
-    ASSERT(controller != nullptr);
-    if (controller == nullptr) {
-        return;
-    }
-
-    vec3 position;
-    glm_vec3_copy(controller->position, position);
-    vec3 remaining;
-    glm_vec3_copy(desired_displacement, remaining);
+/* One collide-and-slide solve (up to 4 iterations) for a single
+ * substep's displacement, starting from and updating *position in
+ * place. Split out of character_controller_move() so a large
+ * single-tick displacement can be run through this multiple times at
+ * bounded step sizes instead of once at full length - see that
+ * function's file comment on why. */
+static void collide_and_slide_step(CharacterController *controller, vec3 substep_displacement,
+                                    vec3 position) {
+    /* The full attempt is added exactly once, up front - not
+     * re-added on every iteration. A push correction only ever moves
+     * `tentative` ALONG the collision normal (glm_vec3_scale(hit.normal,
+     * -hit.penetration, push)), so it naturally leaves whatever
+     * tangential component this one displacement already contributed
+     * untouched - that IS the slide, for free, with no separate
+     * "remaining velocity" bookkeeping required.
+     *
+     * An earlier version of this function tracked a `remaining`
+     * vector, re-added it to `position` at the top of every
+     * iteration, and re-projected it after each hit - modeled on the
+     * classic clip-velocity approach from swept (continuous)
+     * collision solvers. It doesn't compose correctly with a
+     * DISCRETE, non-swept test like this one: without a computed
+     * time-of-impact fraction, that pattern silently re-applied the
+     * SAME tangential distance on every one of the 4 iterations
+     * (up to 4x amplification for a diagonal approach against a
+     * single flat surface) whenever the same near-tangent contact was
+     * (correctly or borderline-due-to-float-precision) still reported
+     * as overlapping on a later iteration. Iterating here still
+     * matters - a corner needs multiple bodies' pushes reconciled
+     * against each other, and a push resolving one overlap can reveal
+     * another - it just never needs to re-inject displacement that's
+     * already reflected in `tentative`. */
+    vec3 tentative;
+    glm_vec3_add(position, substep_displacement, tentative);
 
     for (int iteration = 0; iteration < 4; ++iteration) {
-        vec3 tentative;
-        glm_vec3_add(position, remaining, tentative);
-
         bool penetrated = false;
         for (uint32_t i = 1; i <= controller->world->max_bodies; ++i) {
             const Body *body = &controller->world->bodies[i];
@@ -880,36 +923,74 @@ void character_controller_move(CharacterController *controller, vec3 desired_dis
             vec3 push;
             glm_vec3_scale(hit.normal, -hit.penetration, push);
             glm_vec3_add(tentative, push, tentative);
-
-            /* Slide: remove the component of the remaining displacement
-             * that points into the surface, so the next iteration keeps
-             * moving along it instead of stopping dead. */
-            const float into_surface = glm_vec3_dot(remaining, hit.normal);
-            if (into_surface < 0.0f) {
-                vec3 correction;
-                glm_vec3_scale(hit.normal, into_surface, correction);
-                glm_vec3_sub(remaining, correction, remaining);
-            }
             penetrated = true;
         }
 
-        glm_vec3_copy(tentative, position);
         if (!penetrated) {
             break;
         }
+    }
+
+    glm_vec3_copy(tentative, position);
+}
+
+/* Upper bound on how many substeps a single character_controller_move()
+ * call will use, regardless of how large desired_displacement is -
+ * bounds worst-case cost per call. */
+#define CHARACTER_CONTROLLER_MAX_SUBSTEPS 8
+
+void character_controller_move(CharacterController *controller, vec3 desired_displacement,
+                                float delta_time, vec3 out_position) {
+    ASSERT(controller != nullptr);
+    if (controller == nullptr) {
+        return;
+    }
+
+    vec3 position;
+    glm_vec3_copy(controller->position, position);
+
+    /* collide_and_slide_step() only tests the END of a displacement for
+     * overlap, never sweeps the path in between - a discrete (not
+     * continuous) collision test. A single large enough displacement
+     * can therefore land clean on the far side of a thin obstacle
+     * without ever detecting it - real tunneling risk at high per-tick
+     * speed. Splitting into substeps no longer than half the capsule
+     * radius each closes that gap for any bounded, realistic speed
+     * without the cost of a true swept-shape (continuous collision
+     * detection) test. It is a mitigation, not a fix: an obstacle
+     * thinner than one substep's length, hit at a speed whose full
+     * displacement still exceeds CHARACTER_CONTROLLER_MAX_SUBSTEPS
+     * substeps, can still tunnel - true CCD is a separate, larger
+     * future engine milestone. */
+    const float displacement_length = glm_vec3_norm(desired_displacement);
+    const float max_substep_length = controller->radius * 0.5f;
+    int         substep_count = 1;
+    if (max_substep_length > 0.0f && displacement_length > max_substep_length) {
+        substep_count = (int)ceilf(displacement_length / max_substep_length);
+        if (substep_count > CHARACTER_CONTROLLER_MAX_SUBSTEPS) {
+            substep_count = CHARACTER_CONTROLLER_MAX_SUBSTEPS;
+        }
+    }
+
+    vec3 substep_displacement;
+    glm_vec3_scale(desired_displacement, 1.0f / (float)substep_count, substep_displacement);
+    for (int substep = 0; substep < substep_count; ++substep) {
+        collide_and_slide_step(controller, substep_displacement, position);
     }
 
     glm_vec3_copy(position, controller->position);
     glm_vec3_copy(position, out_position);
 
     /* Grounded probe: a short ray straight down from the capsule's
-     * bottom cap. */
-    controller->grounded = false;
+     * bottom cap, with hysteresis - see character_controller_is_grounded()'s
+     * doc comment. */
     /* The capsule's actual lowest point is `radius` below its bottom
      * axis endpoint (position.y - half_height), not the endpoint itself
      * - the endpoint is the center of the bottom hemisphere cap. */
     vec3 probe_origin = {position[0], position[1] - controller->half_height - controller->radius,
                           position[2]};
+    bool probe_hit = false;
+    vec3 hit_normal = {0.0f, 1.0f, 0.0f};
     for (uint32_t i = 1; i <= controller->world->max_bodies; ++i) {
         const Body *body = &controller->world->bodies[i];
         if (!body->active || body->is_trigger) {
@@ -925,16 +1006,36 @@ void character_controller_move(CharacterController *controller, vec3 desired_dis
             vec3 half_extents;
             copy3(body->shape.half_extents, half_extents);
             hit = ray_aabb(probe_origin, down, body_pos, half_extents, controller->radius * 0.3f, &t);
+            /* hit_normal stays (0,1,0) - see character_controller_get_ground_normal()'s
+             * doc comment on why box hits don't compute a per-face normal. */
         } else {
-            const float radius = (body->shape.type == SHAPE_TYPE_CAPSULE)
-                                      ? body->shape.radius + body->shape.half_height
-                                      : body->shape.radius;
-            hit = ray_sphere(probe_origin, down, body_pos, radius, controller->radius * 0.3f, &t);
+            const float body_radius = (body->shape.type == SHAPE_TYPE_CAPSULE)
+                                           ? body->shape.radius + body->shape.half_height
+                                           : body->shape.radius;
+            hit = ray_sphere(probe_origin, down, body_pos, body_radius, controller->radius * 0.3f, &t);
+            if (hit) {
+                vec3 hit_point = {probe_origin[0], probe_origin[1] - t, probe_origin[2]};
+                glm_vec3_sub(hit_point, body_pos, hit_normal);
+                glm_vec3_normalize(hit_normal);
+            }
         }
         if (hit) {
-            controller->grounded = true;
+            probe_hit = true;
             break;
         }
+    }
+
+    if (probe_hit) {
+        controller->grounded = true;
+        controller->ungrounded_seconds = 0.0f;
+        glm_vec3_copy(hit_normal, controller->ground_normal);
+    } else {
+        controller->ungrounded_seconds += delta_time;
+        if (controller->ungrounded_seconds > CHARACTER_CONTROLLER_GROUNDED_HYSTERESIS_SECONDS) {
+            controller->grounded = false;
+        }
+        /* else: still within the hysteresis window - grounded state
+         * and ground_normal hold from the last real contact. */
     }
 }
 
@@ -961,4 +1062,50 @@ void character_controller_set_position(CharacterController *controller, vec3 pos
 bool character_controller_is_grounded(const CharacterController *controller) {
     ASSERT(controller != nullptr);
     return controller != nullptr && controller->grounded;
+}
+
+void character_controller_get_ground_normal(const CharacterController *controller, vec3 out_normal) {
+    ASSERT(controller != nullptr);
+    if (controller == nullptr) {
+        out_normal[0] = 0.0f;
+        out_normal[1] = 1.0f;
+        out_normal[2] = 0.0f;
+        return;
+    }
+    glm_vec3_copy((float *)controller->ground_normal, out_normal);
+}
+
+bool character_controller_resize(CharacterController *controller, float new_radius,
+                                  float new_half_height) {
+    ASSERT(controller != nullptr);
+    if (controller == nullptr) {
+        return false;
+    }
+
+    const float old_bottom_y = controller->position[1] - controller->half_height - controller->radius;
+    vec3        new_position = {controller->position[0], old_bottom_y + new_half_height + new_radius,
+                                 controller->position[2]};
+
+    const bool growing = (new_radius > controller->radius) || (new_half_height > controller->half_height);
+    if (growing) {
+        for (uint32_t i = 1; i <= controller->world->max_bodies; ++i) {
+            const Body *body = &controller->world->bodies[i];
+            if (!body->active || body->is_trigger) {
+                continue;
+            }
+            if ((body->layer & controller->layer_mask) == 0 ||
+                (controller->layer & body->layer_mask) == 0) {
+                continue;
+            }
+            const CollisionResult hit = capsule_vs_body(new_position, new_radius, new_half_height, body);
+            if (hit.overlapping && hit.penetration > CHARACTER_CONTROLLER_RESIZE_OVERLAP_EPSILON) {
+                return false;
+            }
+        }
+    }
+
+    controller->radius = new_radius;
+    controller->half_height = new_half_height;
+    glm_vec3_copy(new_position, controller->position);
+    return true;
 }
