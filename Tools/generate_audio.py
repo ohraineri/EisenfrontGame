@@ -77,23 +77,75 @@ def generate_wind_loop() -> np.ndarray:
     return crossfade_loop(wind, fade_samples=int(0.5 * SAMPLE_RATE))
 
 
-def generate_footstep() -> np.ndarray:
-    duration = 0.14
+def generate_footstep(
+    seed: int,
+    duration: float,
+    noise_cutoff_alpha: float,
+    noise_decay: float,
+    noise_gain: float,
+    thump_freq: float,
+    thump_decay: float,
+    thump_gain: float,
+    ring_freq: float = 0.0,
+    ring_decay: float = 0.0,
+    ring_gain: float = 0.0,
+) -> np.ndarray:
+    """One shared synthesis recipe (filtered-noise crunch + a decaying
+    sine thump, plus an optional second decaying sine for a resonant
+    ring) parameterized per SurfaceType so wood/metal/gravel/etc. read
+    as distinct materials rather than one sound relabeled six times."""
     count = int(duration * SAMPLE_RATE)
-    rng = np.random.default_rng(seed=2)
+    rng = np.random.default_rng(seed=seed)
     t = np.arange(count) / SAMPLE_RATE
 
     noise = rng.uniform(-1.0, 1.0, count)
-    noise = one_pole_lowpass(noise, cutoff_alpha=0.35)
-    noise_envelope = np.exp(-t * 45.0)
+    noise = one_pole_lowpass(noise, cutoff_alpha=noise_cutoff_alpha)
+    noise_envelope = np.exp(-t * noise_decay)
 
-    thump = np.sin(2 * np.pi * 85.0 * t)
-    thump_envelope = np.exp(-t * 30.0)
+    thump = np.sin(2 * np.pi * thump_freq * t)
+    thump_envelope = np.exp(-t * thump_decay)
 
-    footstep = noise * noise_envelope * 0.7 + thump * thump_envelope * 0.6
+    footstep = noise * noise_envelope * noise_gain + thump * thump_envelope * thump_gain
+    if ring_gain > 0.0:
+        ring = np.sin(2 * np.pi * ring_freq * t)
+        ring_envelope = np.exp(-t * ring_decay)
+        footstep += ring * ring_envelope * ring_gain
+
     footstep /= np.max(np.abs(footstep)) + 1e-9
     footstep *= 0.9
     return footstep
+
+
+# One preset per SurfaceType (Game/src/surface_type.h) - see that file
+# for what each category is used for in the level.
+FOOTSTEP_PRESETS = {
+    "footstep_soil.wav": dict(
+        seed=2, duration=0.14, noise_cutoff_alpha=0.35, noise_decay=45.0, noise_gain=0.7,
+        thump_freq=85.0, thump_decay=30.0, thump_gain=0.6,
+    ),
+    "footstep_sand.wav": dict(
+        seed=12, duration=0.14, noise_cutoff_alpha=0.15, noise_decay=55.0, noise_gain=0.5,
+        thump_freq=65.0, thump_decay=35.0, thump_gain=0.35,
+    ),
+    "footstep_gravel.wav": dict(
+        seed=22, duration=0.16, noise_cutoff_alpha=0.6, noise_decay=35.0, noise_gain=0.9,
+        thump_freq=80.0, thump_decay=32.0, thump_gain=0.3,
+    ),
+    "footstep_wood.wav": dict(
+        seed=32, duration=0.2, noise_cutoff_alpha=0.3, noise_decay=50.0, noise_gain=0.4,
+        thump_freq=150.0, thump_decay=25.0, thump_gain=0.5,
+        ring_freq=180.0, ring_decay=18.0, ring_gain=0.5,
+    ),
+    "footstep_metal.wav": dict(
+        seed=42, duration=0.3, noise_cutoff_alpha=0.4, noise_decay=60.0, noise_gain=0.3,
+        thump_freq=300.0, thump_decay=20.0, thump_gain=0.4,
+        ring_freq=420.0, ring_decay=8.0, ring_gain=0.6,
+    ),
+    "footstep_concrete.wav": dict(
+        seed=52, duration=0.14, noise_cutoff_alpha=0.5, noise_decay=60.0, noise_gain=0.6,
+        thump_freq=110.0, thump_decay=40.0, thump_gain=0.8,
+    ),
+}
 
 
 def generate_ambience() -> np.ndarray:
@@ -120,7 +172,8 @@ def generate_ambience() -> np.ndarray:
 def main() -> None:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     write_wav(os.path.join(OUTPUT_DIR, "wind_loop.wav"), generate_wind_loop())
-    write_wav(os.path.join(OUTPUT_DIR, "footstep.wav"), generate_footstep())
+    for file_name, params in FOOTSTEP_PRESETS.items():
+        write_wav(os.path.join(OUTPUT_DIR, file_name), generate_footstep(**params))
     write_wav(os.path.join(OUTPUT_DIR, "ambience.wav"), generate_ambience())
 
 
