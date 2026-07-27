@@ -21,6 +21,76 @@ add_executable(networking_tests networking_tests/test_networking.c)
 target_link_libraries(networking_tests PRIVATE Eisenfront::Networking unity)
 add_test(NAME networking_tests COMMAND networking_tests)
 
+# Compiles the Game-side .c directly by path (Game builds an executable,
+# not a library, so there's nothing to link against here).
+add_executable(player_movement_tests
+    player_movement_tests/test_player_movement.c
+    ${CMAKE_SOURCE_DIR}/Game/src/player_movement.c
+)
+target_include_directories(player_movement_tests PRIVATE ${CMAKE_SOURCE_DIR}/Game/src)
+target_link_libraries(player_movement_tests PRIVATE Eisenfront::Cglm unity)
+if(NOT WIN32)
+    target_link_libraries(player_movement_tests PRIVATE m)
+endif()
+add_test(NAME player_movement_tests COMMAND player_movement_tests)
+
+# Pure - no engine dependency at all.
+add_executable(sim_clock_tests
+    sim_clock_tests/test_sim_clock.c
+    ${CMAKE_SOURCE_DIR}/Game/src/sim_clock.c
+)
+target_include_directories(sim_clock_tests PRIVATE ${CMAKE_SOURCE_DIR}/Game/src)
+target_link_libraries(sim_clock_tests PRIVATE unity)
+add_test(NAME sim_clock_tests COMMAND sim_clock_tests)
+
+# Pure - camera_motion.c depends only on player_movement.c/cglm, plus
+# sim_clock.c for the frame-rate-equivalence test's driver loop.
+add_executable(camera_motion_tests
+    camera_motion_tests/test_camera_motion.c
+    ${CMAKE_SOURCE_DIR}/Game/src/camera_motion.c
+    ${CMAKE_SOURCE_DIR}/Game/src/player_movement.c
+    ${CMAKE_SOURCE_DIR}/Game/src/sim_clock.c
+)
+target_include_directories(camera_motion_tests PRIVATE ${CMAKE_SOURCE_DIR}/Game/src)
+target_link_libraries(camera_motion_tests PRIVATE Eisenfront::Cglm unity)
+if(NOT WIN32)
+    target_link_libraries(camera_motion_tests PRIVATE m)
+endif()
+add_test(NAME camera_motion_tests COMMAND camera_motion_tests)
+
+# Only the pure axis-resolve function is exercised (see the test file's
+# header comment); the object file still references Input symbols from
+# infantry_input_command_sample(), so Input/SDL3 must link even though
+# no test calls it.
+add_executable(infantry_input_command_tests
+    infantry_input_command_tests/test_infantry_input_command.c
+    ${CMAKE_SOURCE_DIR}/Game/src/infantry_input_command.c
+)
+target_include_directories(infantry_input_command_tests PRIVATE ${CMAKE_SOURCE_DIR}/Game/src)
+target_link_libraries(infantry_input_command_tests PRIVATE Eisenfront::Input SDL3::SDL3 unity)
+add_test(NAME infantry_input_command_tests COMMAND infantry_input_command_tests)
+
+# Integration-level: exercises infantry_entity.c (and the modules it
+# composes: player_movement.c, infantry_input_command.c) against a real
+# PhysicsWorld with real floor/ceiling geometry - the crouch/jump
+# interaction scenarios (a blocked stand-up, an actual landing) need
+# real collision, not just synthetic vectors.
+add_executable(infantry_entity_tests
+    infantry_entity_tests/test_infantry_entity.c
+    ${CMAKE_SOURCE_DIR}/Game/src/infantry_entity.c
+    ${CMAKE_SOURCE_DIR}/Game/src/player_movement.c
+    ${CMAKE_SOURCE_DIR}/Game/src/infantry_input_command.c
+    ${CMAKE_SOURCE_DIR}/Game/src/camera_motion.c
+)
+target_include_directories(infantry_entity_tests PRIVATE ${CMAKE_SOURCE_DIR}/Game/src)
+target_link_libraries(infantry_entity_tests PRIVATE
+    Eisenfront::Physics Eisenfront::Camera Eisenfront::Ecs Eisenfront::Input SDL3::SDL3 unity
+)
+if(NOT WIN32)
+    target_link_libraries(infantry_entity_tests PRIVATE m)
+endif()
+add_test(NAME infantry_entity_tests COMMAND infantry_entity_tests)
+
 if(EISENFRONT_BUILD_EDITOR)
     add_executable(editor_tests editor_tests/test_editor.c)
     target_link_libraries(editor_tests PRIVATE Eisenfront::Editor SDL3::SDL3 unity)
@@ -105,6 +175,41 @@ target_compile_definitions(material_tests PRIVATE
 )
 add_test(NAME material_tests COMMAND material_tests)
 set_tests_properties(material_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+# Integration-level: builds the real Outpost level (real shader,
+# materials, and PhysicsWorld bodies) and checks that
+# outpost_level_surface_type_for_body() actually agrees with what
+# outpost_scene.c tagged each object with at each add_box() call site.
+add_executable(outpost_scene_tests
+    outpost_scene_tests/test_outpost_scene.c
+    ${CMAKE_SOURCE_DIR}/Game/src/outpost_scene.c
+    ${CMAKE_SOURCE_DIR}/Game/src/primitives.c
+    ${CMAKE_SOURCE_DIR}/Game/src/surface_type.c
+)
+target_include_directories(outpost_scene_tests PRIVATE ${CMAKE_SOURCE_DIR}/Game/src)
+target_link_libraries(outpost_scene_tests PRIVATE
+    Eisenfront::Physics Eisenfront::Scene Eisenfront::Material Eisenfront::Mesh Eisenfront::Cglm unity
+)
+target_compile_definitions(outpost_scene_tests PRIVATE
+    OUTPOST_SCENE_TEST_SHADER_DIR="${CMAKE_SOURCE_DIR}/Assets/shaders"
+)
+add_test(NAME outpost_scene_tests COMMAND outpost_scene_tests)
+set_tests_properties(outpost_scene_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+
+# Real miniaudio engine, real per-surface .wav files from Assets/audio -
+# a missing/misnamed footstep_<surface>.wav fails here exactly like it
+# would at game startup.
+add_executable(game_audio_tests
+    game_audio_tests/test_game_audio.c
+    ${CMAKE_SOURCE_DIR}/Game/src/game_audio.c
+    ${CMAKE_SOURCE_DIR}/Game/src/surface_type.c
+)
+target_include_directories(game_audio_tests PRIVATE ${CMAKE_SOURCE_DIR}/Game/src)
+target_link_libraries(game_audio_tests PRIVATE Eisenfront::Audio unity)
+target_compile_definitions(game_audio_tests PRIVATE
+    GAME_AUDIO_TEST_ASSETS_DIR="${CMAKE_SOURCE_DIR}/Assets"
+)
+add_test(NAME game_audio_tests COMMAND game_audio_tests)
 
 add_executable(asset_manager_tests asset_manager_tests/test_asset_manager.c)
 target_link_libraries(asset_manager_tests PRIVATE Eisenfront::AssetManager unity)
