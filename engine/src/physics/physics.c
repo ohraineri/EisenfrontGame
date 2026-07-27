@@ -948,6 +948,16 @@ void character_controller_get_position(const CharacterController *controller, ve
     out_position[2] = controller->position[2];
 }
 
+void character_controller_set_position(CharacterController *controller, vec3 position) {
+    ASSERT(controller != nullptr);
+    if (controller == nullptr) {
+        return;
+    }
+    controller->position[0] = position[0];
+    controller->position[1] = position[1];
+    controller->position[2] = position[2];
+}
+
 bool character_controller_is_grounded(const CharacterController *controller) {
     ASSERT(controller != nullptr);
     return controller != nullptr && controller->grounded;

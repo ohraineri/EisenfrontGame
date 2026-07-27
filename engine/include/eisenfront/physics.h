@@ -204,6 +204,12 @@ ENGINE_API void character_controller_move(CharacterController *controller,
                                            vec3 desired_displacement, vec3 out_position);
 ENGINE_API void character_controller_get_position(const CharacterController *controller,
                                                     vec3 out_position);
+/* Teleports the controller directly - no collide-and-slide, no sweep
+ * against the world along the way, exactly like rigid_body_set_transform()
+ * for a rigid body. Does not itself change the grounded state;
+ * character_controller_is_grounded() still reports whatever the most
+ * recent character_controller_move() found until the next one runs. */
+ENGINE_API void character_controller_set_position(CharacterController *controller, vec3 position);
 /* True if a short downward probe from the capsule's bottom found
  * something within a small tolerance - call after
  * character_controller_move() for the current step's answer. */

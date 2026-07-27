@@ -369,6 +369,37 @@ static void test_character_controller_grounded_on_floor(void) {
     physics_world_destroy(world);
 }
 
+static void test_character_controller_set_position_teleports(void) {
+    PhysicsWorld *world = nullptr;
+    TEST_ASSERT_EQUAL(RESULT_OK, physics_world_create(nullptr, &world));
+
+    const CharacterControllerDesc controller_desc = {
+        .radius = 0.4f,
+        .half_height = 0.9f,
+        .position = {0.0f, 5.0f, 0.0f},
+        .layer = 1u,
+        .layer_mask = COLLISION_LAYER_ALL,
+    };
+    CharacterController *controller = nullptr;
+    TEST_ASSERT_EQUAL(RESULT_OK, character_controller_create(world, &controller_desc, &controller));
+
+    /* No collision body anywhere near the destination - a real sweep
+     * via character_controller_move() would arrive there fine too, so
+     * this specifically proves set_position() teleports directly
+     * rather than routing through collide-and-slide. */
+    vec3 destination = {40.0f, 12.0f, -40.0f};
+    character_controller_set_position(controller, destination);
+
+    vec3 position;
+    character_controller_get_position(controller, position);
+    TEST_ASSERT_EQUAL_FLOAT(destination[0], position[0]);
+    TEST_ASSERT_EQUAL_FLOAT(destination[1], position[1]);
+    TEST_ASSERT_EQUAL_FLOAT(destination[2], position[2]);
+
+    character_controller_destroy(controller);
+    physics_world_destroy(world);
+}
+
 int main(void) {
     UNITY_BEGIN();
 
@@ -385,6 +416,7 @@ int main(void) {
     RUN_TEST(test_apply_impulse_changes_velocity);
     RUN_TEST(test_character_controller_slides_along_wall);
     RUN_TEST(test_character_controller_grounded_on_floor);
+    RUN_TEST(test_character_controller_set_position_teleports);
 
     return UNITY_END();
 }
